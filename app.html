@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>Sistema de Estoque dos Freezers - Hotel</title>
+  <title>Sistema de Estoque dos Freezers - Multi-Hotel</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -34,10 +34,40 @@
       padding-bottom: 90px;
     }
 
-    /* Topbar */
+    /* Barra Superior com Seleção de Hotel */
+    .hotel-selector-bar {
+      background: #0f172a;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: white;
+    }
+
+    .hotel-selector-bar label {
+      font-size: 0.82rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .hotel-select {
+      background: #1e293b;
+      color: #38bdf8;
+      border: 1.5px solid #334155;
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      outline: none;
+      cursor: pointer;
+    }
+
+    /* Topbar do App */
     header {
       background: white;
-      padding: 14px 18px;
+      padding: 12px 18px;
       border-bottom: 1px solid var(--border);
       position: sticky;
       top: 0;
@@ -49,14 +79,23 @@
     }
 
     .header-title h1 {
-      font-size: 1.15rem;
+      font-size: 1.1rem;
       font-weight: 700;
       color: #0f172a;
     }
 
     .header-title p {
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       color: var(--text-muted);
+    }
+
+    .hotel-badge {
+      background: #e0f2fe;
+      color: #0284c7;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 700;
     }
 
     /* Navegação Superior de Módulos */
@@ -108,16 +147,16 @@
     /* Cartões */
     .card {
       background: var(--card-bg);
-      padding: 16px;
+      padding: 14px 16px;
       border-radius: var(--radius);
-      margin-bottom: 16px;
+      margin-bottom: 14px;
       border: 1px solid var(--border);
       box-shadow: 0 1px 2px rgba(0,0,0,0.03);
     }
 
     .card label {
       display: block;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       font-weight: 600;
       margin-bottom: 6px;
       color: #334155;
@@ -144,12 +183,12 @@
       background: #e2e8f0;
       padding: 4px;
       border-radius: 10px;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
 
     .tab-btn {
       flex: 1;
-      padding: 10px;
+      padding: 9px;
       border: none;
       background: transparent;
       font-weight: 600;
@@ -359,15 +398,8 @@
       margin-left: 4px;
     }
 
-    .btn-edit {
-      background: #e0f2fe;
-      color: #0369a1;
-    }
-
-    .btn-del {
-      background: #fee2e2;
-      color: #b91c1c;
-    }
+    .btn-edit { background: #e0f2fe; color: #0369a1; }
+    .btn-del { background: #fee2e2; color: #b91c1c; }
 
     .btn-add {
       background: var(--success);
@@ -410,13 +442,23 @@
 </head>
 <body>
 
-  <!-- Topbar -->
+  <!-- Barra Superior de Seleção do Hotel -->
+  <div class="hotel-selector-bar">
+    <label for="selectHotelAtivo">🏨 Unidade do Hotel:</label>
+    <select id="selectHotelAtivo" class="hotel-select" onchange="mudarHotel(this.value)">
+      <option value="Hit Hotel">Hit Hotel</option>
+      <option value="Porto Salvador">Porto Salvador</option>
+      <option value="Ancoras">Ancoras</option>
+    </select>
+  </div>
+
+  <!-- Header -->
   <header>
     <div class="header-title">
-      <h1>Hotel Estoque</h1>
-      <p>Freezers de Bebidas e Sorvetes</p>
+      <h1>Controle de Freezers</h1>
+      <p id="subtituloHotel">Estoque de Bebidas e Sorvetes</p>
     </div>
-    <div style="font-size: 0.75rem; color: #64748b; font-weight: 600;" id="badgeDataHoje">Hoje</div>
+    <div class="hotel-badge" id="badgeHotel">Hit Hotel</div>
   </header>
 
   <!-- Módulos de Navegação -->
@@ -523,13 +565,34 @@
   </div>
 
   <script>
+    let hotelAtivo = localStorage.getItem('hotel_selecionado') || 'Hit Hotel';
     let todosProdutos = [];
     let categoriaAtiva = 'Freezer Bebidas';
+    let subRelatorioAtivo = 'atual';
 
     document.addEventListener("DOMContentLoaded", () => {
-      document.getElementById('badgeDataHoje').innerText = new Date().toLocaleDateString('pt-BR');
+      document.getElementById('selectHotelAtivo').value = hotelAtivo;
+      atualizarIdentificacaoHotel();
       carregarProdutos();
     });
+
+    function mudarHotel(novoHotel) {
+      hotelAtivo = novoHotel;
+      localStorage.setItem('hotel_selecionado', hotelAtivo);
+      atualizarIdentificacaoHotel();
+      carregarProdutos().then(() => {
+        if (document.getElementById('viewRelatorios').classList.contains('active')) {
+          carregarSubRelatorio(subRelatorioAtivo);
+        } else if (document.getElementById('viewGerenciar').classList.contains('active')) {
+          renderizarListaCrud();
+        }
+      });
+    }
+
+    function atualizarIdentificacaoHotel() {
+      document.getElementById('badgeHotel').innerText = hotelAtivo;
+      document.getElementById('subtituloHotel').innerText = `Estoque isolado: ${hotelAtivo}`;
+    }
 
     function trocarModulo(modulo, btn) {
       document.querySelectorAll('.module-btn').forEach(b => b.classList.remove('active'));
@@ -544,7 +607,7 @@
       } else if (modulo === 'relatorios') {
         document.getElementById('viewRelatorios').classList.add('active');
         barra.style.display = 'none';
-        carregarSubRelatorio('atual');
+        carregarSubRelatorio(subRelatorioAtivo);
       } else if (modulo === 'gerenciar') {
         document.getElementById('viewGerenciar').classList.add('active');
         barra.style.display = 'none';
@@ -554,12 +617,13 @@
 
     async function carregarProdutos() {
       try {
-        const res = await fetch('/api/produtos');
+        document.getElementById('loadingItens').style.display = 'block';
+        const res = await fetch(`/api/produtos?hotel=${encodeURIComponent(hotelAtivo)}`);
         todosProdutos = await res.json();
         document.getElementById('loadingItens').style.display = 'none';
         exibirItensPorCategoria();
       } catch (e) {
-        document.getElementById('loadingItens').innerText = 'Erro ao carregar produtos do servidor.';
+        document.getElementById('loadingItens').innerText = 'Erro ao carregar produtos do hotel.';
       }
     }
 
@@ -619,13 +683,14 @@
 
       const btn = document.getElementById('btnSalvar');
       btn.disabled = true;
-      btn.innerText = "Registrando e enviando por e-mail...";
+      btn.innerText = `Salvando conferência do ${hotelAtivo}...`;
 
       try {
         const res = await fetch('/api/salvar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            hotel: hotelAtivo,
             conferente: conferente,
             itens: todosProdutos.map(p => ({ id: p.id, quantidade: p.estoqueAtual || 0 }))
           })
@@ -636,10 +701,10 @@
 
         mostrarFeedback(
           "✅",
-          "Conferência Registrada!",
+          `Conferência Salva! (${hotelAtivo})`,
           resp.itensAlerta > 0
-            ? `Conferência salva e e-mail com a lista de contagem e os ${resp.itensAlerta} itens em alerta foi enviado para mwfreitas@gmail.com!`
-            : "Conferência salva e resumo completo enviado para mwfreitas@gmail.com! Nenhum item atingiu o estoque mínimo."
+            ? `Conferência do ${hotelAtivo} salva e e-mail com a contagem e ${resp.itensAlerta} alertas foi enviado para mwfreitas@gmail.com!`
+            : `Conferência do ${hotelAtivo} salva e resumo completo enviado para mwfreitas@gmail.com! Nenhum item atingiu o estoque mínimo.`
         );
         carregarProdutos();
       } catch (err) {
@@ -651,19 +716,20 @@
 
     // --- RELATÓRIOS ---
     async function carregarSubRelatorio(tipo, btn) {
+      subRelatorioAtivo = tipo;
       if (btn) {
         document.querySelectorAll('#viewRelatorios .tab-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
       }
       const div = document.getElementById('relatorioConteudo');
-      div.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b;">Carregando relatório...</div>';
+      div.innerHTML = `<div style="text-align:center;padding:20px;color:#64748b;">Carregando relatório do ${hotelAtivo}...</div>`;
 
       if (tipo === 'atual') {
-        const res = await fetch('/api/relatorios/estoque-atual');
+        const res = await fetch(`/api/relatorios/estoque-atual?hotel=${encodeURIComponent(hotelAtivo)}`);
         const dados = await res.json();
         let html = `
           <div class="card" style="padding: 12px; margin-bottom: 10px;">
-            <p style="font-size:0.85rem;color:#475569;">Lista em tempo real dos itens, estoques mínimos e sugestão de compras.</p>
+            <p style="font-size:0.85rem;color:#475569;">Estoque em tempo real do <strong>${hotelAtivo}</strong> com sugestão de compras.</p>
           </div>
           <table class="report-table">
             <thead>
@@ -689,7 +755,7 @@
         html += '</tbody></table>';
         div.innerHTML = html;
       } else if (tipo === 'vendas') {
-        const res = await fetch('/api/relatorios/comparativo-dias');
+        const res = await fetch(`/api/relatorios/comparativo-dias?hotel=${encodeURIComponent(hotelAtivo)}`);
         const dados = await res.json();
         if (!dados.disponivel) {
           div.innerHTML = `<div class="card" style="text-align:center;padding:30px;"><p style="color:#64748b;">${dados.mensagem}</p></div>`;
@@ -698,7 +764,7 @@
         let html = `
           <div class="card" style="padding: 12px; margin-bottom: 10px;">
             <p style="font-size:0.85rem;color:#475569;">
-              Comparativo entre <strong>${dados.diaAnterior}</strong> e <strong>${dados.diaRecente}</strong>.<br>
+              <strong>${hotelAtivo}</strong>: Comparativo entre <strong>${dados.diaAnterior}</strong> e <strong>${dados.diaRecente}</strong>.<br>
               <strong>Total de saídas/consumo estimado:</strong> ${dados.totalSaidas} unidades
             </p>
           </div>
@@ -726,7 +792,7 @@
         html += '</tbody></table>';
         div.innerHTML = html;
       } else if (tipo === 'historico') {
-        const res = await fetch('/api/relatorios/conferencias-dia');
+        const res = await fetch(`/api/relatorios/conferencias-dia?hotel=${encodeURIComponent(hotelAtivo)}`);
         const dados = await res.json();
         let html = `
           <table class="report-table">
@@ -766,7 +832,7 @@
         div.innerHTML = `
           <div>
             <div style="font-weight:600;font-size:0.9rem;">${p.nome}</div>
-            <div style="font-size:0.75rem;color:#64748b;">${p.categoria} | Mínimo: <strong>${p.estoqueMinimo} ${p.unidade}</strong></div>
+            <div style="font-size:0.75rem;color:#64748b;">${p.categoria} | Mínimo no ${hotelAtivo}: <strong>${p.estoqueMinimo} ${p.unidade}</strong></div>
           </div>
           <div class="crud-actions">
             <button class="btn-edit" onclick="editarProdutoModal('${p.id}')">✏️ Editar</button>
@@ -778,7 +844,7 @@
     }
 
     function abrirModalProduto() {
-      document.getElementById('modalProdutoTitulo').innerText = 'Adicionar Novo Item';
+      document.getElementById('modalProdutoTitulo').innerText = `Adicionar Novo Item ao ${hotelAtivo}`;
       document.getElementById('crudProdId').value = '';
       document.getElementById('crudProdNome').value = '';
       document.getElementById('crudProdMinimo').value = '15';
@@ -789,7 +855,7 @@
     function editarProdutoModal(id) {
       const prod = todosProdutos.find(p => p.id === id);
       if (!prod) return;
-      document.getElementById('modalProdutoTitulo').innerText = 'Editar Item & Estoque Mínimo';
+      document.getElementById('modalProdutoTitulo').innerText = `Editar Item no ${hotelAtivo}`;
       document.getElementById('crudProdId').value = prod.id;
       document.getElementById('crudProdNome').value = prod.nome;
       document.getElementById('crudProdMinimo').value = prod.estoqueMinimo;
@@ -815,7 +881,9 @@
       }
 
       const endpoint = id ? '/api/produtos/editar' : '/api/produtos/adicionar';
-      const payload = id ? { id, nome, estoqueMinimo: minimo, unidade } : { nome, categoria, estoqueMinimo: minimo, unidade };
+      const payload = id 
+        ? { hotel: hotelAtivo, id, nome, estoqueMinimo: minimo, unidade } 
+        : { hotel: hotelAtivo, nome, categoria, estoqueMinimo: minimo, unidade };
 
       try {
         const res = await fetch(endpoint, {
@@ -838,7 +906,7 @@
     }
 
     async function excluirProduto(id) {
-      if (!confirm("Tem certeza que deseja excluir este item? (Só será permitido se não houver conferências salvas com ele).")) {
+      if (!confirm(`Tem certeza que deseja excluir este item apenas do ${hotelAtivo}? (Só será permitido se não houver conferências salvas com ele neste hotel).`)) {
         return;
       }
 
@@ -846,7 +914,7 @@
         const res = await fetch('/api/produtos/excluir', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id })
+          body: JSON.stringify({ hotel: hotelAtivo, id })
         });
         const resp = await res.json();
         if (resp.sucesso) {

@@ -11,6 +11,8 @@ DB_FILE = os.environ.get("DB_FILE", "estoque_hotel.db")
 EMAIL_DESTINO = os.environ.get("EMAIL_DESTINO", "mwfreitas@gmail.com")
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 
+HOTEIS_DISPONIVEIS = ["Hit Hotel", "Porto Salvador", "Ancoras"]
+
 def get_db():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
@@ -66,18 +68,21 @@ def inicializar_banco():
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS produtos (
-            id TEXT PRIMARY KEY,
+            id TEXT,
+            hotel TEXT,
             categoria TEXT,
             nome TEXT,
             estoque_minimo INTEGER,
             estoque_atual INTEGER,
             unidade TEXT,
-            ultima_atualizacao TEXT
+            ultima_atualizacao TEXT,
+            PRIMARY KEY (id, hotel)
         )
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS conferencias (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            hotel TEXT,
             data_hora TEXT,
             data_dia TEXT,
             conferente TEXT,
@@ -89,6 +94,7 @@ def inicializar_banco():
         CREATE TABLE IF NOT EXISTS historico (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             conferencia_id INTEGER,
+            hotel TEXT,
             data_hora TEXT,
             data_dia TEXT,
             conferente TEXT,
@@ -102,24 +108,17 @@ def inicializar_banco():
         )
     """)
 
-    # Verificar se os produtos antigos precisam ser substituídos pelos novos
-    cursor.execute("SELECT id FROM produtos WHERE id = 'BEB-01'")
-    row = cursor.fetchone()
-    substituir = False
-    if not row:
-        substituir = True
-    else:
-        cursor.execute("SELECT nome FROM produtos WHERE id = 'BEB-01'")
-        if cursor.fetchone()[0] != "Cerveja Amstel 350ml":
-            substituir = True
-
-    if substituir:
-        cursor.execute("DELETE FROM produtos")
-        agora = datetime.now().strftime("%d/%m/%Y %H:%M")
-        cursor.executemany("""
-            INSERT INTO produtos (id, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, [(it[0], it[1], it[2], it[3], it[4], it[5], agora) for it in NOVOS_PRODUTOS])
+    # Popula o catálogo de cada hotel de forma isolada
+    agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+    for hotel in HOTEIS_DISPONIVEIS:
+        cursor.execute("SELECT COUNT(*) FROM produtos WHERE hotel = ?", (hotel,))
+        qtd = cursor.fetchone()[0]
+        if qtd == 0:
+            for it in NOVOS_PRODUTOS:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO produtos (id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (it[0], hotel, it[1], it[2], it[3], it[4], it[5], agora))
 
     conn.commit()
     conn.close()
@@ -127,13 +126,13 @@ def inicializar_banco():
 inicializar_banco()
 
 # --- DISPARO DE EMAIL VIA RESEND OU WEBHOOK GRÁTIS ---
-def enviar_email_conferencia(conferente, agora, itens_conferidos, itens_alerta):
-    """Envia o e-mail completo com a contagem do dia e alertas para mwfreitas@gmail.com"""
+def enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_alerta):
+    """Envia o e-mail completo com a contagem do hotel específico para mwfreitas@gmail.com"""
     try:
         linhas_alerta_html = ""
         if itens_alerta:
-            linhas_alerta_html = """
-            <h3 style="color:#d93025;margin-top:20px;">⚠️ ITENS QUE ATINGIRAM ESTOQUE MÍNIMO (COMPRA SUGERIDA)</h3>
+            linhas_alerta_html = f"""
+            <h3 style="color:#d93025;margin-top:20px;">⚠️ ITENS QUE ATINGIRAM ESTOQUE MÍNIMO - {hotel} (COMPRA SUGERIDA)</h3>
             <table style="width:100%;border-collapse:collapse;margin-bottom:25px;font-family:sans-serif;font-size:13px;">
                 <thead>
                     <tr style="background:#d93025;color:white;">
@@ -159,8 +158,8 @@ def enviar_email_conferencia(conferente, agora, itens_conferidos, itens_alerta):
             linhas_alerta_html += "</tbody></table>"
 
         # Tabela completa de todos os itens contados
-        tabela_geral_html = """
-        <h3 style="color:#1a73e8;margin-top:15px;">📋 CONTAGEM COMPLETA DO DIA</h3>
+        tabela_geral_html = f"""
+        <h3 style="color:#1a73e8;margin-top:15px;">📋 CONTAGEM COMPLETA - {hotel}</h3>
         <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px;">
             <thead>
                 <tr style="background:#334155;color:white;">
@@ -188,25 +187,28 @@ def enviar_email_conferencia(conferente, agora, itens_conferidos, itens_alerta):
 
         html_body = f"""
         <div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:20px;border:1px solid #e2e8f0;border-radius:10px;">
-            <h2 style="color:#0f172a;margin-top:0;">❄️ Registro Diário de Estoque - Freezers</h2>
+            <div style="background:#1a73e8;color:white;padding:12px;border-radius:8px;margin-bottom:15px;">
+                <h2 style="margin:0;font-size:1.3rem;">🏨 {hotel} - Conferência de Freezers</h2>
+            </div>
             <p style="font-size:15px;color:#475569;">
-                Conferência realizada em: <strong>{agora}</strong><br>
+                Data/Hora: <strong>{agora}</strong><br>
                 Conferente responsável: <strong>{conferente}</strong>
             </p>
             {linhas_alerta_html}
             {tabela_geral_html}
             <p style="font-size:12px;color:#94a3b8;margin-top:25px;text-align:center;">
-                Sistema Automatizado de Estoque dos Freezers do Hotel
+                Sistema Multi-Hotel Automatizado de Estoque
             </p>
         </div>
         """
 
-        # Envia via API Resend se configurada ou serviço de webhook gratuito
+        subject = f"🏨 [{hotel}] Conferência de Freezers ({agora}) {'[ALERTA DE COMPRAS]' if itens_alerta else ''}"
+
         if RESEND_API_KEY:
             req_data = json.dumps({
-                "from": "Hotel Estoque <onboarding@resend.dev>",
+                "from": f"{hotel} <onboarding@resend.dev>",
                 "to": [EMAIL_DESTINO],
-                "subject": f"📋 Conferência de Estoque dos Freezers ({agora}) {'[ALERTA DE COMPRAS]' if itens_alerta else ''}",
+                "subject": subject,
                 "html": html_body
             }).encode('utf-8')
             req = urllib.request.Request(
@@ -216,14 +218,13 @@ def enviar_email_conferencia(conferente, agora, itens_conferidos, itens_alerta):
             )
             urllib.request.urlopen(req, timeout=10)
         else:
-            # Fallback seguro para serviço de email sem precisar de smtp
             req_data = json.dumps({
                 "to": EMAIL_DESTINO,
-                "subject": f"📋 Conferência de Estoque dos Freezers ({agora}) {'[ALERTA DE COMPRAS]' if itens_alerta else ''}",
+                "subject": subject,
                 "html": html_body
             }).encode('utf-8')
             req = urllib.request.Request(
-                "https://formspree.io/f/mwkgyyqk", # Endpoint seguro de roteamento ou log
+                "https://formspree.io/f/mwkgyyqk",
                 data=req_data,
                 headers={"Content-Type": "application/json"}
             )
@@ -240,16 +241,22 @@ def enviar_email_conferencia(conferente, agora, itens_conferidos, itens_alerta):
 def index():
     return send_from_directory('.', 'app.html')
 
+@app.route("/api/hoteis")
+def listar_hoteis():
+    return jsonify(HOTEIS_DISPONIVEIS)
+
 @app.route("/api/produtos")
 def listar_produtos():
+    hotel = request.args.get("hotel", "Hit Hotel")
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao FROM produtos ORDER BY categoria, nome")
+    cursor.execute("SELECT id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao FROM produtos WHERE hotel = ? ORDER BY categoria, nome", (hotel,))
     linhas = cursor.fetchall()
     conn.close()
     
     produtos = [{
         "id": l["id"],
+        "hotel": l["hotel"],
         "categoria": l["categoria"],
         "nome": l["nome"],
         "estoqueMinimo": l["estoque_minimo"],
@@ -263,6 +270,7 @@ def listar_produtos():
 @app.route("/api/produtos/adicionar", methods=["POST"])
 def adicionar_produto():
     dados = request.get_json(force=True)
+    hotel = dados.get("hotel", "Hit Hotel")
     nome = dados.get("nome", "").strip()
     categoria = dados.get("categoria", "Freezer Bebidas")
     minimo = int(dados.get("estoqueMinimo", 10))
@@ -274,25 +282,25 @@ def adicionar_produto():
     conn = get_db()
     cursor = conn.cursor()
     
-    # Gerar ID único
     prefix = "BEB" if "Bebidas" in categoria else "SOR"
-    cursor.execute("SELECT COUNT(*) FROM produtos WHERE categoria = ?", (categoria,))
+    cursor.execute("SELECT COUNT(*) FROM produtos WHERE hotel = ? AND categoria = ?", (hotel, categoria))
     prox_num = cursor.fetchone()[0] + 1
     novo_id = f"{prefix}-{prox_num:02d}-{int(datetime.now().timestamp())%10000}"
     
     agora = datetime.now().strftime("%d/%m/%Y %H:%M")
     cursor.execute("""
-        INSERT INTO produtos (id, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (novo_id, categoria, nome, minimo, 0, unidade, agora))
+        INSERT INTO produtos (id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (novo_id, hotel, categoria, nome, minimo, 0, unidade, agora))
     conn.commit()
     conn.close()
     
-    return jsonify({"sucesso": True, "mensagem": "Produto adicionado com sucesso!", "id": novo_id})
+    return jsonify({"sucesso": True, "mensagem": f"Produto adicionado ao {hotel} com sucesso!", "id": novo_id})
 
 @app.route("/api/produtos/editar", methods=["POST"])
 def editar_produto():
     dados = request.get_json(force=True)
+    hotel = dados.get("hotel", "Hit Hotel")
     p_id = dados.get("id")
     nome = dados.get("nome", "").strip()
     minimo = int(dados.get("estoqueMinimo", 10))
@@ -304,41 +312,42 @@ def editar_produto():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-        UPDATE produtos SET nome = ?, estoque_minimo = ?, unidade = ? WHERE id = ?
-    """, (nome, minimo, unidade, p_id))
+        UPDATE produtos SET nome = ?, estoque_minimo = ?, unidade = ? WHERE id = ? AND hotel = ?
+    """, (nome, minimo, unidade, p_id, hotel))
     conn.commit()
     conn.close()
     
-    return jsonify({"sucesso": True, "mensagem": "Produto atualizado com sucesso!"})
+    return jsonify({"sucesso": True, "mensagem": f"Produto atualizado no {hotel} com sucesso!"})
 
 @app.route("/api/produtos/excluir", methods=["POST"])
 def excluir_produto():
     dados = request.get_json(force=True)
+    hotel = dados.get("hotel", "Hit Hotel")
     p_id = dados.get("id")
     
     conn = get_db()
     cursor = conn.cursor()
     
-    # Regra: só excluir se não tiver movimentação no estoque
-    cursor.execute("SELECT COUNT(*) FROM historico WHERE produto_id = ?", (p_id,))
+    cursor.execute("SELECT COUNT(*) FROM historico WHERE produto_id = ? AND hotel = ?", (p_id, hotel))
     total_movimentacoes = cursor.fetchone()[0]
     
     if total_movimentacoes > 0:
         conn.close()
         return jsonify({
             "sucesso": False, 
-            "mensagem": f"Este produto já possui {total_movimentacoes} movimentação(ões) registrada(s) no histórico e não pode ser excluído por segurança contábil."
+            "mensagem": f"Este produto já possui {total_movimentacoes} movimentação(ões) no {hotel} e não pode ser excluído por segurança contábil."
         }), 400
         
-    cursor.execute("DELETE FROM produtos WHERE id = ?", (p_id,))
+    cursor.execute("DELETE FROM produtos WHERE id = ? AND hotel = ?", (p_id, hotel))
     conn.commit()
     conn.close()
     
-    return jsonify({"sucesso": True, "mensagem": "Produto excluído com sucesso!"})
+    return jsonify({"sucesso": True, "mensagem": f"Produto excluído do {hotel} com sucesso!"})
 
 @app.route("/api/salvar", methods=["POST"])
 def salvar_conferencia():
     dados = request.get_json(force=True)
+    hotel = dados.get("hotel", "Hit Hotel")
     conferente = dados.get("conferente", "Não identificado").strip()
     itens = dados.get("itens", [])
     agora_dt = datetime.now()
@@ -348,11 +357,10 @@ def salvar_conferencia():
     conn = get_db()
     cursor = conn.cursor()
     
-    # Criar registro mestre da conferência
     cursor.execute("""
-        INSERT INTO conferencias (data_hora, data_dia, conferente, total_itens, total_alertas)
-        VALUES (?, ?, ?, ?, ?)
-    """, (agora, data_dia, conferente, len(itens), 0))
+        INSERT INTO conferencias (hotel, data_hora, data_dia, conferente, total_itens, total_alertas)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (hotel, agora, data_dia, conferente, len(itens), 0))
     conf_id = cursor.lastrowid
     
     itens_alerta = []
@@ -362,7 +370,7 @@ def salvar_conferencia():
         p_id = it.get("id")
         qtd = int(it.get("quantidade", 0))
         
-        cursor.execute("SELECT categoria, nome, estoque_minimo, estoque_atual, unidade FROM produtos WHERE id = ?", (p_id,))
+        cursor.execute("SELECT categoria, nome, estoque_minimo, estoque_atual, unidade FROM produtos WHERE id = ? AND hotel = ?", (p_id, hotel))
         row = cursor.fetchone()
         if row:
             cat = row["categoria"]
@@ -371,7 +379,7 @@ def salvar_conferencia():
             qtd_anterior = row["estoque_atual"]
             unidade = row["unidade"]
             
-            cursor.execute("UPDATE produtos SET estoque_atual = ?, ultima_atualizacao = ? WHERE id = ?", (qtd, agora, p_id))
+            cursor.execute("UPDATE produtos SET estoque_atual = ?, ultima_atualizacao = ? WHERE id = ? AND hotel = ?", (qtd, agora, p_id, hotel))
             
             precisa_comprar = qtd <= min_estq
             status = f"ALERTA: Repor (+{min_estq - qtd} {unidade})" if precisa_comprar else "OK"
@@ -395,67 +403,68 @@ def salvar_conferencia():
                 itens_alerta.append(item_info)
             
             cursor.execute("""
-                INSERT INTO historico (conferencia_id, data_hora, data_dia, conferente, produto_id, produto_nome, categoria, quantidade, quantidade_anterior, minimo, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (conf_id, agora, data_dia, conferente, p_id, nome, cat, qtd, qtd_anterior, min_estq, status))
+                INSERT INTO historico (conferencia_id, hotel, data_hora, data_dia, conferente, produto_id, produto_nome, categoria, quantidade, quantidade_anterior, minimo, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (conf_id, hotel, agora, data_dia, conferente, p_id, nome, cat, qtd, qtd_anterior, min_estq, status))
     
     cursor.execute("UPDATE conferencias SET total_alertas = ? WHERE id = ?", (len(itens_alerta), conf_id))
     conn.commit()
     conn.close()
     
-    # Enviar e-mail de notificação para mwfreitas@gmail.com
-    enviar_email_conferencia(conferente, agora, itens_conferidos, itens_alerta)
+    enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_alerta)
     
     return jsonify({
         "sucesso": True,
-        "mensagem": "Conferência registrada com sucesso e relatório enviado por e-mail!",
+        "mensagem": f"Conferência do {hotel} registrada com sucesso!",
         "itensAlerta": len(itens_alerta)
     })
 
-# --- RELATÓRIOS DO SISTEMA ---
+# --- RELATÓRIOS DO HOTEL ---
 
 @app.route("/api/relatorios/estoque-atual")
 def relatorio_estoque_atual():
+    hotel = request.args.get("hotel", "Hit Hotel")
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT id, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao,
+        SELECT id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao,
         CASE WHEN estoque_atual <= estoque_minimo THEN 1 ELSE 0 END as precisa_comprar,
         CASE WHEN estoque_minimo > estoque_atual THEN estoque_minimo - estoque_atual ELSE 0 END as sugestao_compra
         FROM produtos
+        WHERE hotel = ?
         ORDER BY categoria, nome
-    """)
+    """, (hotel,))
     rows = cursor.fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
 
 @app.route("/api/relatorios/conferencias-dia")
 def relatorio_conferencias():
+    hotel = request.args.get("hotel", "Hit Hotel")
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, data_hora, data_dia, conferente, total_itens, total_alertas FROM conferencias ORDER BY id DESC LIMIT 60")
+    cursor.execute("SELECT id, hotel, data_hora, data_dia, conferente, total_itens, total_alertas FROM conferencias WHERE hotel = ? ORDER BY id DESC LIMIT 60", (hotel,))
     rows = cursor.fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
 
 @app.route("/api/relatorios/comparativo-dias")
 def relatorio_comparativo_dias():
-    """Compara o estoque entre as duas últimas conferências registradas para calcular vendas / saídas do período"""
+    hotel = request.args.get("hotel", "Hit Hotel")
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT data_dia FROM historico ORDER BY data_dia DESC LIMIT 2")
+    cursor.execute("SELECT DISTINCT data_dia FROM historico WHERE hotel = ? ORDER BY data_dia DESC LIMIT 2", (hotel,))
     dias = [r[0] for r in cursor.fetchall()]
     
     if len(dias) < 2:
         conn.close()
         return jsonify({
             "disponivel": False, 
-            "mensagem": "É necessário ter pelo menos 2 conferências em dias distintos para gerar o comparativo de vendas diárias."
+            "mensagem": f"O {hotel} precisa ter pelo menos 2 conferências em dias distintos para gerar o comparativo de vendas diárias."
         })
         
     dia_recente, dia_anterior = dias[0], dias[1]
     
-    # Buscar itens do dia mais recente e do dia anterior
     query = """
         SELECT 
             h1.produto_nome, h1.categoria,
@@ -464,12 +473,12 @@ def relatorio_comparativo_dias():
             (h2.quantidade - h1.quantidade) as consumo_estimado,
             h1.minimo
         FROM historico h1
-        JOIN historico h2 ON h1.produto_id = h2.produto_id AND h2.data_dia = ?
-        WHERE h1.data_dia = ?
+        JOIN historico h2 ON h1.produto_id = h2.produto_id AND h2.data_dia = ? AND h2.hotel = ?
+        WHERE h1.data_dia = ? AND h1.hotel = ?
         GROUP BY h1.produto_id
         ORDER BY h1.categoria, h1.produto_nome
     """
-    cursor.execute(query, (dia_anterior, dia_recente))
+    cursor.execute(query, (dia_anterior, hotel, dia_recente, hotel))
     rows = cursor.fetchall()
     conn.close()
     
@@ -489,29 +498,12 @@ def relatorio_comparativo_dias():
         
     return jsonify({
         "disponivel": True,
+        "hotel": hotel,
         "diaRecente": dia_recente,
         "diaAnterior": dia_anterior,
         "totalSaidas": total_saidas,
         "itens": comparativo
     })
-
-@app.route("/api/relatorios/comparativo-meses")
-def relatorio_comparativo_meses():
-    """Agrupa o consumo por mês (YYYY-MM)"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT strftime('%Y-%m', data_dia) as mes, categoria, produto_nome, 
-        MAX(quantidade_anterior) as estq_inicial, 
-        MIN(quantidade) as estq_final,
-        SUM(CASE WHEN quantidade_anterior > quantidade THEN quantidade_anterior - quantidade ELSE 0 END) as total_saidas
-        FROM historico
-        GROUP BY mes, produto_id
-        ORDER BY mes DESC, categoria, produto_nome
-    """)
-    rows = cursor.fetchall()
-    conn.close()
-    return jsonify([dict(r) for r in rows])
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
