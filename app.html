@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Controle de Freezers - Hotel</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #1a73e8;
+      --primary-dark: #1557b0;
+      --success: #0f9d58;
+      --danger: #d93025;
+      --warning: #f4b400;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --radius: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      padding-bottom: 90px;
+    }
+
+    header {
+      background: white;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .header-title h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .header-title p {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .badge-today {
+      background: #e8f0fe;
+      color: var(--primary);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    /* Card Conferente */
+    .conferente-card {
+      background: var(--card-bg);
+      padding: 16px;
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+    }
+
+    .conferente-card label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #334155;
+    }
+
+    .conferente-card input {
+      width: 100%;
+      padding: 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .conferente-card input:focus {
+      border-color: var(--primary);
+    }
+
+    /* Tabs dos Freezers */
+    .tabs {
+      display: flex;
+      background: #e2e8f0;
+      padding: 4px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: transparent;
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .tab-btn.active {
+      background: white;
+      color: var(--primary);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+    }
+
+    /* Lista de Itens */
+    .itens-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .item-card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+
+    .item-info {
+      flex: 1;
+    }
+
+    .item-name {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+
+    .item-meta {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      display: flex;
+      gap: 8px;
+    }
+
+    .meta-min {
+      background: #fef3c7;
+      color: #92400e;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+
+    /* Contador numérico */
+    .stepper {
+      display: flex;
+      align-items: center;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      background: #f8fafc;
+      overflow: hidden;
+    }
+
+    .stepper button {
+      width: 38px;
+      height: 38px;
+      border: none;
+      background: white;
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: var(--primary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      transition: background 0.15s;
+    }
+
+    .stepper button:active {
+      background: #e2e8f0;
+    }
+
+    .stepper input {
+      width: 48px;
+      height: 38px;
+      border: none;
+      text-align: center;
+      font-size: 1rem;
+      font-weight: 700;
+      background: transparent;
+      color: #0f172a;
+      outline: none;
+    }
+
+    /* Barra inferior */
+    .bottom-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: white;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
+      z-index: 100;
+    }
+
+    .btn-submit {
+      width: 100%;
+      max-width: 600px;
+      margin: 0 auto;
+      display: block;
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-submit:hover {
+      background: var(--primary-dark);
+    }
+
+    .btn-submit:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      z-index: 200;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-box {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      width: 100%;
+      max-width: 420px;
+      text-align: center;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    }
+
+    .modal-icon {
+      font-size: 3rem;
+      margin-bottom: 12px;
+    }
+
+    .modal-box h3 {
+      font-size: 1.25rem;
+      margin-bottom: 8px;
+    }
+
+    .modal-box p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+      line-height: 1.4;
+    }
+
+    .modal-btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      background: var(--primary);
+      color: white;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    /* Loading */
+    .loading-container {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+    }
+
+    .spinner {
+      border: 3px solid rgba(0,0,0,0.1);
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border-left-color: var(--primary);
+      animation: spin 1s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="header-title">
+      <h1>Hotel Estoque</h1>
+      <p>Conferência Diária dos Freezers</p>
+    </div>
+    <div class="badge-today" id="badgeDataHoje">Hoje</div>
+  </header>
+
+  <div class="container">
+    <div class="conferente-card">
+      <label for="nomeConferente">👤 Nome do Conferente:</label>
+      <input type="text" id="nomeConferente" placeholder="Ex: Carlos (Recepção / Bar)" required>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="filtrarCategoria('Freezer Bebidas', this)">
+        🥤 Bebidas
+      </button>
+      <button class="tab-btn" onclick="filtrarCategoria('Freezer Picolés e Sorvetes', this)">
+        🍦 Picolés & Sorvetes
+      </button>
+    </div>
+
+    <div id="loading" class="loading-container">
+      <div class="spinner"></div>
+      <p>Carregando itens dos freezers...</p>
+    </div>
+
+    <div class="itens-container" id="listaItens"></div>
+  </div>
+
+  <div class="bottom-bar">
+    <button class="btn-submit" id="btnSalvar" onclick="enviarConferencia()">
+      Salvar Conferência Diária
+    </button>
+  </div>
+
+  <!-- Modal Feedback -->
+  <div class="modal-overlay" id="modalFeedback">
+    <div class="modal-box">
+      <div class="modal-icon" id="modalIcon">✅</div>
+      <h3 id="modalTitle">Conferência Salva!</h3>
+      <p id="modalMsg"></p>
+      <button class="modal-btn" onclick="fecharModal()">OK</button>
+    </div>
+  </div>
+
+  <script>
+    let todosProdutos = [];
+    let categoriaAtiva = 'Freezer Bebidas';
+
+    document.addEventListener("DOMContentLoaded", () => {
+      formatarDataHoje();
+      carregarProdutos();
+    });
+
+    function formatarDataHoje() {
+      const hoje = new Date();
+      document.getElementById('badgeDataHoje').innerText = hoje.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    }
+
+    async function carregarProdutos() {
+      try {
+        const res = await fetch('/api/produtos');
+        todosProdutos = await res.json();
+        document.getElementById('loading').style.display = 'none';
+        exibirItensPorCategoria();
+      } catch (err) {
+        document.getElementById('loading').innerHTML = '<p style="color:red">Erro ao carregar dados do servidor local.</p>';
+      }
+    }
+
+    function filtrarCategoria(categoria, btn) {
+      categoriaAtiva = categoria;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      exibirItensPorCategoria();
+    }
+
+    function exibirItensPorCategoria() {
+      const container = document.getElementById('listaItens');
+      container.innerHTML = '';
+
+      const filtrados = todosProdutos.filter(p => p.categoria === categoriaAtiva);
+
+      if (filtrados.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: #94a3b8; padding: 20px;">Nenhum produto nesta categoria.</p>';
+        return;
+      }
+
+      filtrados.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'item-card';
+        div.innerHTML = `
+          <div class="item-info">
+            <div class="item-name">${item.nome}</div>
+            <div class="item-meta">
+              <span class="meta-min">Mínimo: ${item.estoqueMinimo} ${item.unidade}</span>
+            </div>
+          </div>
+          <div class="stepper">
+            <button type="button" onclick="ajustarQtd('${item.id}', -1)">−</button>
+            <input type="number" id="qtd_${item.id}" min="0" value="${item.estoqueAtual || 0}" onchange="atualizarMemoria('${item.id}', this.value)">
+            <button type="button" onclick="ajustarQtd('${item.id}', 1)">+</button>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function ajustarQtd(id, delta) {
+      const input = document.getElementById(`qtd_${id}`);
+      let val = parseInt(input.value, 10) || 0;
+      val = Math.max(0, val + delta);
+      input.value = val;
+      atualizarMemoria(id, val);
+    }
+
+    function atualizarMemoria(id, valor) {
+      const item = todosProdutos.find(p => p.id === id);
+      if (item) {
+        item.estoqueAtual = parseInt(valor, 10) || 0;
+      }
+    }
+
+    async function enviarConferencia() {
+      const conferente = document.getElementById('nomeConferente').value.trim();
+      if (!conferente) {
+        alert("Por favor, preencha o nome de quem está conferindo o estoque!");
+        document.getElementById('nomeConferente').focus();
+        return;
+      }
+
+      const btn = document.getElementById('btnSalvar');
+      btn.disabled = true;
+      btn.innerText = "Salvando conferência...";
+
+      const payload = {
+        conferente: conferente,
+        itens: todosProdutos.map(p => ({
+          id: p.id,
+          quantidade: p.estoqueAtual || 0
+        }))
+      };
+
+      try {
+        const res = await fetch('/api/salvar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const resposta = await res.json();
+
+        btn.disabled = false;
+        btn.innerText = "Salvar Conferência Diária";
+
+        if (resposta.sucesso) {
+          mostrarModal(
+            "✅", 
+            "Conferência Registrada!", 
+            resposta.itensAlerta > 0 
+              ? `Foram identificados ${resposta.itensAlerta} itens com estoque baixo! O relatório de compras foi gerado para ${resposta.itensAlerta} produtos.`
+              : "Todos os itens estão acima do estoque mínimo! Não é necessário comprar nada."
+          );
+        } else {
+          mostrarModal("❌", "Erro", resposta.mensagem);
+        }
+      } catch (e) {
+        btn.disabled = false;
+        btn.innerText = "Salvar Conferência Diária";
+        mostrarModal("❌", "Falha de Conexão", "Não foi possível conectar com o servidor.");
+      }
+    }
+
+    function mostrarModal(icone, titulo, msg) {
+      document.getElementById('modalIcon').innerText = icone;
+      document.getElementById('modalTitle').innerText = titulo;
+      document.getElementById('modalMsg').innerText = msg;
+      document.getElementById('modalFeedback').classList.add('active');
+    }
+
+    function fecharModal() {
+      document.getElementById('modalFeedback').classList.remove('active');
+    }
+  </script>
+</body>
+</html>
