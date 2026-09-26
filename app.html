@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>Controle de Freezers - Hotel</title>
+  <title>Sistema de Estoque dos Freezers - Hotel</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -34,9 +34,10 @@
       padding-bottom: 90px;
     }
 
+    /* Topbar */
     header {
       background: white;
-      padding: 16px 20px;
+      padding: 14px 18px;
       border-bottom: 1px solid var(--border);
       position: sticky;
       top: 0;
@@ -44,7 +45,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     }
 
     .header-title h1 {
@@ -58,31 +59,63 @@
       color: var(--text-muted);
     }
 
-    .badge-today {
+    /* Navegação Superior de Módulos */
+    .module-nav {
+      display: flex;
+      background: white;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      padding: 6px 12px;
+      gap: 8px;
+    }
+
+    .module-btn {
+      padding: 8px 14px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .module-btn.active {
       background: #e8f0fe;
       color: var(--primary);
-      padding: 6px 12px;
-      border-radius: 20px;
-      font-size: 0.75rem;
-      font-weight: 600;
+      border-color: #d2e3fc;
     }
 
     .container {
-      max-width: 600px;
+      max-width: 700px;
       margin: 0 auto;
       padding: 16px;
     }
 
-    /* Card Conferente */
-    .conferente-card {
+    /* Views */
+    .view-section {
+      display: none;
+    }
+
+    .view-section.active {
+      display: block;
+    }
+
+    /* Cartões */
+    .card {
       background: var(--card-bg);
       padding: 16px;
       border-radius: var(--radius);
       margin-bottom: 16px;
       border: 1px solid var(--border);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
     }
 
-    .conferente-card label {
+    .card label {
       display: block;
       font-size: 0.85rem;
       font-weight: 600;
@@ -90,17 +123,18 @@
       color: #334155;
     }
 
-    .conferente-card input {
+    .card input, .card select {
       width: 100%;
-      padding: 12px;
+      padding: 10px 12px;
       border: 1.5px solid var(--border);
       border-radius: 8px;
       font-size: 0.95rem;
       outline: none;
       transition: border-color 0.2s;
+      background: white;
     }
 
-    .conferente-card input:focus {
+    .card input:focus, .card select:focus {
       border-color: var(--primary);
     }
 
@@ -136,23 +170,22 @@
       box-shadow: 0 2px 4px rgba(0,0,0,0.06);
     }
 
-    /* Lista de Itens */
+    /* Itens de Conferência */
     .itens-container {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
 
     .item-card {
       background: var(--card-bg);
       border-radius: var(--radius);
-      padding: 14px 16px;
+      padding: 12px 14px;
       border: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+      gap: 10px;
     }
 
     .item-info {
@@ -160,17 +193,18 @@
     }
 
     .item-name {
-      font-size: 0.95rem;
+      font-size: 0.92rem;
       font-weight: 600;
       color: #0f172a;
-      margin-bottom: 4px;
+      margin-bottom: 3px;
     }
 
     .item-meta {
       font-size: 0.75rem;
       color: var(--text-muted);
       display: flex;
-      gap: 8px;
+      gap: 6px;
+      align-items: center;
     }
 
     .meta-min {
@@ -181,7 +215,15 @@
       font-weight: 500;
     }
 
-    /* Contador numérico */
+    .meta-alert {
+      background: #fee2e2;
+      color: #b91c1c;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    /* Stepper numérico */
     .stepper {
       display: flex;
       align-items: center;
@@ -192,8 +234,8 @@
     }
 
     .stepper button {
-      width: 38px;
-      height: 38px;
+      width: 36px;
+      height: 36px;
       border: none;
       background: white;
       font-size: 1.2rem;
@@ -203,8 +245,6 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      user-select: none;
-      transition: background 0.15s;
     }
 
     .stepper button:active {
@@ -212,8 +252,8 @@
     }
 
     .stepper input {
-      width: 48px;
-      height: 38px;
+      width: 44px;
+      height: 36px;
       border: none;
       text-align: center;
       font-size: 1rem;
@@ -223,7 +263,7 @@
       outline: none;
     }
 
-    /* Barra inferior */
+    /* Botão de Envio Inferior */
     .bottom-bar {
       position: fixed;
       bottom: 0;
@@ -238,7 +278,7 @@
 
     .btn-submit {
       width: 100%;
-      max-width: 600px;
+      max-width: 700px;
       margin: 0 auto;
       display: block;
       background: var(--primary);
@@ -249,146 +289,236 @@
       font-weight: 600;
       border-radius: 10px;
       cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .btn-submit:hover {
-      background: var(--primary-dark);
     }
 
     .btn-submit:disabled {
       background: #94a3b8;
-      cursor: not-allowed;
+    }
+
+    /* Tabelas de Relatórios */
+    .report-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      margin-top: 12px;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .report-table th, .report-table td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .report-table th {
+      background: #f1f5f9;
+      font-weight: 600;
+      color: #334155;
+    }
+
+    .badge-danger {
+      background: #fee2e2;
+      color: #b91c1c;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.75rem;
+    }
+
+    .badge-ok {
+      background: #dcfce7;
+      color: #15803d;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.75rem;
+    }
+
+    /* Gestão de Itens */
+    .crud-item {
+      background: white;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .crud-actions button {
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: none;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-left: 4px;
+    }
+
+    .btn-edit {
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+
+    .btn-del {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+
+    .btn-add {
+      background: var(--success);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 12px;
     }
 
     /* Modal */
     .modal-overlay {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0,0,0,0.5);
       display: none;
       justify-content: center;
       align-items: center;
-      padding: 20px;
+      padding: 16px;
       z-index: 200;
     }
 
-    .modal-overlay.active {
-      display: flex;
-    }
+    .modal-overlay.active { display: flex; }
 
     .modal-box {
       background: white;
-      border-radius: 16px;
-      padding: 24px;
+      border-radius: 14px;
+      padding: 20px;
       width: 100%;
-      max-width: 420px;
-      text-align: center;
+      max-width: 440px;
       box-shadow: 0 10px 25px rgba(0,0,0,0.15);
-    }
-
-    .modal-icon {
-      font-size: 3rem;
-      margin-bottom: 12px;
-    }
-
-    .modal-box h3 {
-      font-size: 1.25rem;
-      margin-bottom: 8px;
-    }
-
-    .modal-box p {
-      font-size: 0.9rem;
-      color: var(--text-muted);
-      margin-bottom: 20px;
-      line-height: 1.4;
-    }
-
-    .modal-btn {
-      width: 100%;
-      padding: 12px;
-      border: none;
-      border-radius: 8px;
-      background: var(--primary);
-      color: white;
-      font-weight: 600;
-      font-size: 0.95rem;
-      cursor: pointer;
-    }
-
-    /* Loading */
-    .loading-container {
-      text-align: center;
-      padding: 40px 20px;
-      color: var(--text-muted);
-    }
-
-    .spinner {
-      border: 3px solid rgba(0,0,0,0.1);
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      border-left-color: var(--primary);
-      animation: spin 1s linear infinite;
-      margin: 0 auto 12px;
-    }
-
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
     }
   </style>
 </head>
 <body>
 
-  <!-- Header -->
+  <!-- Topbar -->
   <header>
     <div class="header-title">
       <h1>Hotel Estoque</h1>
-      <p>Conferência Diária dos Freezers</p>
+      <p>Freezers de Bebidas e Sorvetes</p>
     </div>
-    <div class="badge-today" id="badgeDataHoje">Hoje</div>
+    <div style="font-size: 0.75rem; color: #64748b; font-weight: 600;" id="badgeDataHoje">Hoje</div>
   </header>
 
-  <div class="container">
-    <div class="conferente-card">
-      <label for="nomeConferente">👤 Nome do Conferente:</label>
-      <input type="text" id="nomeConferente" placeholder="Ex: Carlos (Recepção / Bar)" required>
-    </div>
-
-    <div class="tabs">
-      <button class="tab-btn active" onclick="filtrarCategoria('Freezer Bebidas', this)">
-        🥤 Bebidas
-      </button>
-      <button class="tab-btn" onclick="filtrarCategoria('Freezer Picolés e Sorvetes', this)">
-        🍦 Picolés & Sorvetes
-      </button>
-    </div>
-
-    <div id="loading" class="loading-container">
-      <div class="spinner"></div>
-      <p>Carregando itens dos freezers...</p>
-    </div>
-
-    <div class="itens-container" id="listaItens"></div>
+  <!-- Módulos de Navegação -->
+  <div class="module-nav">
+    <button class="module-btn active" onclick="trocarModulo('conferencia', this)">📝 Conferência Diária</button>
+    <button class="module-btn" onclick="trocarModulo('relatorios', this)">📊 Relatórios</button>
+    <button class="module-btn" onclick="trocarModulo('gerenciar', this)">⚙️ Gerenciar Itens</button>
   </div>
 
-  <div class="bottom-bar">
+  <div class="container">
+
+    <!-- 1. MÓDULO: CONFERÊNCIA DIÁRIA -->
+    <div id="viewConferencia" class="view-section active">
+      <div class="card">
+        <label for="nomeConferente">👤 Nome do Conferente:</label>
+        <input type="text" id="nomeConferente" placeholder="Ex: Carlos (Recepção / Bar)" required>
+      </div>
+
+      <div class="tabs">
+        <button class="tab-btn active" onclick="filtrarCategoria('Freezer Bebidas', this)">🥤 Freezer Bebidas</button>
+        <button class="tab-btn" onclick="filtrarCategoria('Freezer Picolés e Sorvetes', this)">🍦 Picolés & Sorvetes</button>
+      </div>
+
+      <div id="loadingItens" style="text-align: center; padding: 25px; color: #64748b;">Carregando produtos...</div>
+      <div class="itens-container" id="listaItens"></div>
+    </div>
+
+    <!-- 2. MÓDULO: RELATÓRIOS -->
+    <div id="viewRelatorios" class="view-section">
+      <div class="tabs" style="margin-bottom: 12px;">
+        <button class="tab-btn active" onclick="carregarSubRelatorio('atual', this)">📦 Estoque Atual</button>
+        <button class="tab-btn" onclick="carregarSubRelatorio('vendas', this)">📈 Vendas Dia a Dia</button>
+        <button class="tab-btn" onclick="carregarSubRelatorio('historico', this)">📅 Histórico</button>
+      </div>
+
+      <div id="relatorioConteudo"></div>
+    </div>
+
+    <!-- 3. MÓDULO: GERENCIAR ITENS & ESTOQUE MÍNIMO -->
+    <div id="viewGerenciar" class="view-section">
+      <button class="btn-add" onclick="abrirModalProduto()">➕ Adicionar Novo Produto</button>
+      <div id="listaCrudItens"></div>
+    </div>
+
+  </div>
+
+  <!-- Botão Inferior de Envio da Conferência -->
+  <div class="bottom-bar" id="barraInferior">
     <button class="btn-submit" id="btnSalvar" onclick="enviarConferencia()">
-      Salvar Conferência Diária
+      Salvar Conferência e Enviar Relatório por E-mail
     </button>
   </div>
 
-  <!-- Modal Feedback -->
-  <div class="modal-overlay" id="modalFeedback">
+  <!-- Modal Adicionar / Editar Produto -->
+  <div class="modal-overlay" id="modalProduto">
     <div class="modal-box">
-      <div class="modal-icon" id="modalIcon">✅</div>
-      <h3 id="modalTitle">Conferência Salva!</h3>
-      <p id="modalMsg"></p>
-      <button class="modal-btn" onclick="fecharModal()">OK</button>
+      <h3 id="modalProdutoTitulo" style="margin-bottom: 14px;">Adicionar Item</h3>
+      <input type="hidden" id="crudProdId">
+      
+      <div style="margin-bottom: 10px;">
+        <label style="font-size:0.8rem;font-weight:600;">Nome do Item:</label>
+        <input type="text" id="crudProdNome" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-top:4px;" placeholder="Ex: Cerveja Corona 350ml">
+      </div>
+
+      <div style="margin-bottom: 10px;" id="divCategoriaCrud">
+        <label style="font-size:0.8rem;font-weight:600;">Freezer / Categoria:</label>
+        <select id="crudProdCategoria" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-top:4px;">
+          <option value="Freezer Bebidas">Freezer Bebidas</option>
+          <option value="Freezer Picolés e Sorvetes">Freezer Picolés e Sorvetes</option>
+        </select>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px;">
+        <div style="flex:1;">
+          <label style="font-size:0.8rem;font-weight:600;">Estoque Mínimo:</label>
+          <input type="number" id="crudProdMinimo" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-top:4px;" min="1" value="15">
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:0.8rem;font-weight:600;">Unidade:</label>
+          <select id="crudProdUnidade" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-top:4px;">
+            <option value="un">un</option>
+            <option value="lata">lata</option>
+            <option value="garrafa">garrafa</option>
+            <option value="pote">pote</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button type="button" onclick="fecharModalProduto()" style="padding:8px 14px;border:1px solid #cbd5e1;border-radius:6px;background:white;cursor:pointer;">Cancelar</button>
+        <button type="button" onclick="salvarProdutoCrud()" style="padding:8px 14px;border:none;border-radius:6px;background:var(--primary);color:white;font-weight:600;cursor:pointer;">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Feedback Geral -->
+  <div class="modal-overlay" id="modalFeedback">
+    <div class="modal-box" style="text-align: center;">
+      <div id="feedbackIcon" style="font-size: 2.8rem; margin-bottom: 8px;">✅</div>
+      <h3 id="feedbackTitulo" style="margin-bottom: 8px;">Conferência Salva!</h3>
+      <p id="feedbackMsg" style="font-size: 0.9rem; color: #64748b; margin-bottom: 16px;"></p>
+      <button onclick="document.getElementById('modalFeedback').classList.remove('active')" style="width:100%;padding:10px;border:none;background:var(--primary);color:white;border-radius:8px;font-weight:600;cursor:pointer;">OK</button>
     </div>
   </div>
 
@@ -397,43 +527,53 @@
     let categoriaAtiva = 'Freezer Bebidas';
 
     document.addEventListener("DOMContentLoaded", () => {
-      formatarDataHoje();
+      document.getElementById('badgeDataHoje').innerText = new Date().toLocaleDateString('pt-BR');
       carregarProdutos();
     });
 
-    function formatarDataHoje() {
-      const hoje = new Date();
-      document.getElementById('badgeDataHoje').innerText = hoje.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    function trocarModulo(modulo, btn) {
+      document.querySelectorAll('.module-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
+      const barra = document.getElementById('barraInferior');
+
+      if (modulo === 'conferencia') {
+        document.getElementById('viewConferencia').classList.add('active');
+        barra.style.display = 'block';
+      } else if (modulo === 'relatorios') {
+        document.getElementById('viewRelatorios').classList.add('active');
+        barra.style.display = 'none';
+        carregarSubRelatorio('atual');
+      } else if (modulo === 'gerenciar') {
+        document.getElementById('viewGerenciar').classList.add('active');
+        barra.style.display = 'none';
+        renderizarListaCrud();
+      }
     }
 
     async function carregarProdutos() {
       try {
         const res = await fetch('/api/produtos');
         todosProdutos = await res.json();
-        document.getElementById('loading').style.display = 'none';
+        document.getElementById('loadingItens').style.display = 'none';
         exibirItensPorCategoria();
-      } catch (err) {
-        document.getElementById('loading').innerHTML = '<p style="color:red">Erro ao carregar dados do servidor local.</p>';
+      } catch (e) {
+        document.getElementById('loadingItens').innerText = 'Erro ao carregar produtos do servidor.';
       }
     }
 
-    function filtrarCategoria(categoria, btn) {
-      categoriaAtiva = categoria;
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      if (btn) btn.classList.add('active');
+    function filtrarCategoria(cat, btn) {
+      categoriaAtiva = cat;
+      document.querySelectorAll('#viewConferencia .tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
       exibirItensPorCategoria();
     }
 
     function exibirItensPorCategoria() {
       const container = document.getElementById('listaItens');
       container.innerHTML = '';
-
       const filtrados = todosProdutos.filter(p => p.categoria === categoriaAtiva);
-
-      if (filtrados.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: #94a3b8; padding: 20px;">Nenhum produto nesta categoria.</p>';
-        return;
-      }
 
       filtrados.forEach(item => {
         const div = document.createElement('div');
@@ -443,6 +583,7 @@
             <div class="item-name">${item.nome}</div>
             <div class="item-meta">
               <span class="meta-min">Mínimo: ${item.estoqueMinimo} ${item.unidade}</span>
+              ${item.estoqueAtual <= item.estoqueMinimo ? `<span class="meta-alert">Abaixo do Mínimo!</span>` : ''}
             </div>
           </div>
           <div class="stepper">
@@ -463,71 +604,268 @@
       atualizarMemoria(id, val);
     }
 
-    function atualizarMemoria(id, valor) {
-      const item = todosProdutos.find(p => p.id === id);
-      if (item) {
-        item.estoqueAtual = parseInt(valor, 10) || 0;
-      }
+    function atualizarMemoria(id, val) {
+      const prod = todosProdutos.find(p => p.id === id);
+      if (prod) prod.estoqueAtual = parseInt(val, 10) || 0;
     }
 
     async function enviarConferencia() {
       const conferente = document.getElementById('nomeConferente').value.trim();
       if (!conferente) {
-        alert("Por favor, preencha o nome de quem está conferindo o estoque!");
+        alert("Por favor, informe o nome do conferente!");
         document.getElementById('nomeConferente').focus();
         return;
       }
 
       const btn = document.getElementById('btnSalvar');
       btn.disabled = true;
-      btn.innerText = "Salvando conferência...";
-
-      const payload = {
-        conferente: conferente,
-        itens: todosProdutos.map(p => ({
-          id: p.id,
-          quantidade: p.estoqueAtual || 0
-        }))
-      };
+      btn.innerText = "Registrando e enviando por e-mail...";
 
       try {
         const res = await fetch('/api/salvar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({
+            conferente: conferente,
+            itens: todosProdutos.map(p => ({ id: p.id, quantidade: p.estoqueAtual || 0 }))
+          })
         });
-        const resposta = await res.json();
-
+        const resp = await res.json();
         btn.disabled = false;
-        btn.innerText = "Salvar Conferência Diária";
+        btn.innerText = "Salvar Conferência e Enviar Relatório por E-mail";
 
-        if (resposta.sucesso) {
-          mostrarModal(
-            "✅", 
-            "Conferência Registrada!", 
-            resposta.itensAlerta > 0 
-              ? `Foram identificados ${resposta.itensAlerta} itens com estoque baixo! O relatório de compras foi gerado para ${resposta.itensAlerta} produtos.`
-              : "Todos os itens estão acima do estoque mínimo! Não é necessário comprar nada."
-          );
-        } else {
-          mostrarModal("❌", "Erro", resposta.mensagem);
-        }
-      } catch (e) {
+        mostrarFeedback(
+          "✅",
+          "Conferência Registrada!",
+          resp.itensAlerta > 0
+            ? `Conferência salva e e-mail com a lista de contagem e os ${resp.itensAlerta} itens em alerta foi enviado para mwfreitas@gmail.com!`
+            : "Conferência salva e resumo completo enviado para mwfreitas@gmail.com! Nenhum item atingiu o estoque mínimo."
+        );
+        carregarProdutos();
+      } catch (err) {
         btn.disabled = false;
-        btn.innerText = "Salvar Conferência Diária";
-        mostrarModal("❌", "Falha de Conexão", "Não foi possível conectar com o servidor.");
+        btn.innerText = "Salvar Conferência e Enviar Relatório por E-mail";
+        mostrarFeedback("❌", "Erro", "Não foi possível conectar com o servidor.");
       }
     }
 
-    function mostrarModal(icone, titulo, msg) {
-      document.getElementById('modalIcon').innerText = icone;
-      document.getElementById('modalTitle').innerText = titulo;
-      document.getElementById('modalMsg').innerText = msg;
-      document.getElementById('modalFeedback').classList.add('active');
+    // --- RELATÓRIOS ---
+    async function carregarSubRelatorio(tipo, btn) {
+      if (btn) {
+        document.querySelectorAll('#viewRelatorios .tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+      const div = document.getElementById('relatorioConteudo');
+      div.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b;">Carregando relatório...</div>';
+
+      if (tipo === 'atual') {
+        const res = await fetch('/api/relatorios/estoque-atual');
+        const dados = await res.json();
+        let html = `
+          <div class="card" style="padding: 12px; margin-bottom: 10px;">
+            <p style="font-size:0.85rem;color:#475569;">Lista em tempo real dos itens, estoques mínimos e sugestão de compras.</p>
+          </div>
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Atual</th>
+                <th>Mínimo</th>
+                <th>Status / Compra</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        dados.forEach(d => {
+          html += `
+            <tr>
+              <td><strong>${d.nome}</strong><br><small style="color:#64748b;">${d.categoria}</small></td>
+              <td>${d.estoque_atual} ${d.unidade}</td>
+              <td>${d.estoque_minimo} ${d.unidade}</td>
+              <td>${d.precisa_comprar ? `<span class="badge-danger">COMPRAR (+${d.sugestao_compra})</span>` : `<span class="badge-ok">OK</span>`}</td>
+            </tr>
+          `;
+        });
+        html += '</tbody></table>';
+        div.innerHTML = html;
+      } else if (tipo === 'vendas') {
+        const res = await fetch('/api/relatorios/comparativo-dias');
+        const dados = await res.json();
+        if (!dados.disponivel) {
+          div.innerHTML = `<div class="card" style="text-align:center;padding:30px;"><p style="color:#64748b;">${dados.mensagem}</p></div>`;
+          return;
+        }
+        let html = `
+          <div class="card" style="padding: 12px; margin-bottom: 10px;">
+            <p style="font-size:0.85rem;color:#475569;">
+              Comparativo entre <strong>${dados.diaAnterior}</strong> e <strong>${dados.diaRecente}</strong>.<br>
+              <strong>Total de saídas/consumo estimado:</strong> ${dados.totalSaidas} unidades
+            </p>
+          </div>
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Produto</th>
+                <th>Estq Anterior</th>
+                <th>Estq Atual</th>
+                <th>Saídas / Vendas</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        dados.itens.forEach(it => {
+          html += `
+            <tr>
+              <td><strong>${it.produto}</strong><br><small style="color:#64748b;">${it.categoria}</small></td>
+              <td>${it.qtdAnterior}</td>
+              <td>${it.qtdAtual}</td>
+              <td style="color:${it.consumoVendas > 0 ? '#1a73e8' : '#64748b'};font-weight:bold;">${it.consumoVendas > 0 ? `−${it.consumoVendas}` : '0'}</td>
+            </tr>
+          `;
+        });
+        html += '</tbody></table>';
+        div.innerHTML = html;
+      } else if (tipo === 'historico') {
+        const res = await fetch('/api/relatorios/conferencias-dia');
+        const dados = await res.json();
+        let html = `
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Data/Hora</th>
+                <th>Conferente</th>
+                <th>Itens</th>
+                <th>Alertas</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        dados.forEach(d => {
+          html += `
+            <tr>
+              <td>${d.data_hora}</td>
+              <td><strong>${d.conferente}</strong></td>
+              <td>${d.total_itens}</td>
+              <td>${d.total_alertas > 0 ? `<span class="badge-danger">${d.total_alertas} alertas</span>` : `<span class="badge-ok">Tudo OK</span>`}</td>
+            </tr>
+          `;
+        });
+        html += '</tbody></table>';
+        div.innerHTML = html;
+      }
     }
 
-    function fecharModal() {
-      document.getElementById('modalFeedback').classList.remove('active');
+    // --- GERENCIAMENTO DE PRODUTOS (CRUD) ---
+    function renderizarListaCrud() {
+      const container = document.getElementById('listaCrudItens');
+      container.innerHTML = '';
+
+      todosProdutos.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'crud-item';
+        div.innerHTML = `
+          <div>
+            <div style="font-weight:600;font-size:0.9rem;">${p.nome}</div>
+            <div style="font-size:0.75rem;color:#64748b;">${p.categoria} | Mínimo: <strong>${p.estoqueMinimo} ${p.unidade}</strong></div>
+          </div>
+          <div class="crud-actions">
+            <button class="btn-edit" onclick="editarProdutoModal('${p.id}')">✏️ Editar</button>
+            <button class="btn-del" onclick="excluirProduto('${p.id}')">🗑️ Excluir</button>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function abrirModalProduto() {
+      document.getElementById('modalProdutoTitulo').innerText = 'Adicionar Novo Item';
+      document.getElementById('crudProdId').value = '';
+      document.getElementById('crudProdNome').value = '';
+      document.getElementById('crudProdMinimo').value = '15';
+      document.getElementById('divCategoriaCrud').style.display = 'block';
+      document.getElementById('modalProduto').classList.add('active');
+    }
+
+    function editarProdutoModal(id) {
+      const prod = todosProdutos.find(p => p.id === id);
+      if (!prod) return;
+      document.getElementById('modalProdutoTitulo').innerText = 'Editar Item & Estoque Mínimo';
+      document.getElementById('crudProdId').value = prod.id;
+      document.getElementById('crudProdNome').value = prod.nome;
+      document.getElementById('crudProdMinimo').value = prod.estoqueMinimo;
+      document.getElementById('crudProdUnidade').value = prod.unidade;
+      document.getElementById('divCategoriaCrud').style.display = 'none';
+      document.getElementById('modalProduto').classList.add('active');
+    }
+
+    function fecharModalProduto() {
+      document.getElementById('modalProduto').classList.remove('active');
+    }
+
+    async function salvarProdutoCrud() {
+      const id = document.getElementById('crudProdId').value;
+      const nome = document.getElementById('crudProdNome').value.trim();
+      const minimo = parseInt(document.getElementById('crudProdMinimo').value, 10) || 10;
+      const unidade = document.getElementById('crudProdUnidade').value;
+      const categoria = document.getElementById('crudProdCategoria').value;
+
+      if (!nome) {
+        alert("O nome do produto é obrigatório!");
+        return;
+      }
+
+      const endpoint = id ? '/api/produtos/editar' : '/api/produtos/adicionar';
+      const payload = id ? { id, nome, estoqueMinimo: minimo, unidade } : { nome, categoria, estoqueMinimo: minimo, unidade };
+
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const resp = await res.json();
+        if (resp.sucesso) {
+          fecharModalProduto();
+          await carregarProdutos();
+          renderizarListaCrud();
+          mostrarFeedback("✅", "Sucesso", resp.mensagem);
+        } else {
+          alert(resp.mensagem);
+        }
+      } catch (e) {
+        alert("Erro ao comunicar com o servidor.");
+      }
+    }
+
+    async function excluirProduto(id) {
+      if (!confirm("Tem certeza que deseja excluir este item? (Só será permitido se não houver conferências salvas com ele).")) {
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/produtos/excluir', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+        const resp = await res.json();
+        if (resp.sucesso) {
+          await carregarProdutos();
+          renderizarListaCrud();
+          mostrarFeedback("✅", "Excluído", resp.mensagem);
+        } else {
+          alert(resp.mensagem);
+        }
+      } catch (e) {
+        alert("Erro ao excluir.");
+      }
+    }
+
+    function mostrarFeedback(icone, titulo, msg) {
+      document.getElementById('feedbackIcon').innerText = icone;
+      document.getElementById('feedbackTitulo').innerText = titulo;
+      document.getElementById('feedbackMsg').innerText = msg;
+      document.getElementById('modalFeedback').classList.add('active');
     }
   </script>
 </body>
