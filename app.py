@@ -4,7 +4,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
-from flask import Flask, request, jsonify, render_to_string, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 
