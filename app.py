@@ -1,7 +1,10 @@
 import os
 import sqlite3
+import smtplib
 import urllib.request
 import json
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
 
@@ -9,6 +12,13 @@ app = Flask(__name__, static_folder='.', static_url_path='')
 
 DB_FILE = os.environ.get("DB_FILE", "estoque_hotel.db")
 EMAIL_DESTINO = os.environ.get("EMAIL_DESTINO", "mwfreitas@gmail.com")
+
+# Credenciais SMTP opcionais (ex: Gmail App Password ou Brevo / SendGrid / Mailgun)
+SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASS = os.environ.get("SMTP_PASS", "")
+
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 
 HOTEIS_DISPONIVEIS = ["Hit Hotel", "Porto Salvador", "Ancoras"]
@@ -18,7 +28,7 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
-# Lista oficial enviada pelo cliente
+# Lista oficial de produtos
 NOVOS_PRODUTOS = [
     # Bebidas
     ("BEB-01", "Freezer Bebidas", "Cerveja Amstel 350ml", 24, 0, "lata"),
@@ -125,86 +135,116 @@ def inicializar_banco():
 
 inicializar_banco()
 
-# --- DISPARO DE EMAIL VIA RESEND OU WEBHOOK GRÁTIS ---
-def enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_alerta):
-    """Envia o e-mail completo com a contagem do hotel específico para mwfreitas@gmail.com"""
-    try:
-        linhas_alerta_html = ""
-        if itens_alerta:
-            linhas_alerta_html = f"""
-            <h3 style="color:#d93025;margin-top:20px;">⚠️ ITENS QUE ATINGIRAM ESTOQUE MÍNIMO - {hotel} (COMPRA SUGERIDA)</h3>
-            <table style="width:100%;border-collapse:collapse;margin-bottom:25px;font-family:sans-serif;font-size:13px;">
+# --- DISPARO DE EMAIL ROBUSTO ---
+def gerar_html_email(hotel, conferente, agora, itens_conferidos, itens_alerta):
+    linhas_alerta_html = ""
+    if itens_alerta:
+        linhas_alerta_html = f"""
+        <div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:14px;margin-bottom:20px;">
+            <h3 style="color:#b91c1c;margin:0 0 10px 0;">⚠️ ITENS QUE ATINGIRAM ESTOQUE MÍNIMO - COMPRA SUGERIDA</h3>
+            <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px;background:white;">
                 <thead>
-                    <tr style="background:#d93025;color:white;">
-                        <th style="padding:8px;border:1px solid #ccc;text-align:left;">Freezer</th>
-                        <th style="padding:8px;border:1px solid #ccc;text-align:left;">Item</th>
-                        <th style="padding:8px;border:1px solid #ccc;text-align:center;">Estoque Atual</th>
-                        <th style="padding:8px;border:1px solid #ccc;text-align:center;">Mínimo</th>
-                        <th style="padding:8px;border:1px solid #ccc;text-align:center;background:#b31412;">Comprar</th>
+                    <tr style="background:#dc2626;color:white;">
+                        <th style="padding:8px;border:1px solid #e5e7eb;text-align:left;">Freezer</th>
+                        <th style="padding:8px;border:1px solid #e5e7eb;text-align:left;">Item</th>
+                        <th style="padding:8px;border:1px solid #e5e7eb;text-align:center;">Estoque Atual</th>
+                        <th style="padding:8px;border:1px solid #e5e7eb;text-align:center;">Mínimo</th>
+                        <th style="padding:8px;border:1px solid #e5e7eb;text-align:center;background:#991b1b;">Comprar</th>
                     </tr>
                 </thead>
                 <tbody>
-            """
-            for it in itens_alerta:
-                linhas_alerta_html += f"""
-                    <tr>
-                        <td style="padding:6px;border:1px solid #ccc;">{it['categoria']}</td>
-                        <td style="padding:6px;border:1px solid #ccc;"><strong>{it['nome']}</strong></td>
-                        <td style="padding:6px;border:1px solid #ccc;text-align:center;color:#d93025;font-weight:bold;">{it['atual']} {it['unidade']}</td>
-                        <td style="padding:6px;border:1px solid #ccc;text-align:center;">{it['minimo']} {it['unidade']}</td>
-                        <td style="padding:6px;border:1px solid #ccc;text-align:center;color:#1a73e8;font-weight:bold;">+{it['sugestao']} {it['unidade']}</td>
-                    </tr>
-                """
-            linhas_alerta_html += "</tbody></table>"
-
-        # Tabela completa de todos os itens contados
-        tabela_geral_html = f"""
-        <h3 style="color:#1a73e8;margin-top:15px;">📋 CONTAGEM COMPLETA - {hotel}</h3>
-        <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px;">
-            <thead>
-                <tr style="background:#334155;color:white;">
-                    <th style="padding:8px;border:1px solid #ccc;text-align:left;">Freezer</th>
-                    <th style="padding:8px;border:1px solid #ccc;text-align:left;">Item</th>
-                    <th style="padding:8px;border:1px solid #ccc;text-align:center;">Contado</th>
-                    <th style="padding:8px;border:1px solid #ccc;text-align:center;">Mínimo</th>
-                    <th style="padding:8px;border:1px solid #ccc;text-align:center;">Status</th>
-                </tr>
-            </thead>
-            <tbody>
         """
-        for it in itens_conferidos:
-            cor_status = "#d93025" if it['precisa_comprar'] else "#0f9d58"
-            tabela_geral_html += f"""
+        for it in itens_alerta:
+            linhas_alerta_html += f"""
                 <tr>
-                    <td style="padding:6px;border:1px solid #ccc;">{it['categoria']}</td>
-                    <td style="padding:6px;border:1px solid #ccc;">{it['nome']}</td>
-                    <td style="padding:6px;border:1px solid #ccc;text-align:center;font-weight:bold;">{it['atual']} {it['unidade']}</td>
-                    <td style="padding:6px;border:1px solid #ccc;text-align:center;">{it['minimo']} {it['unidade']}</td>
-                    <td style="padding:6px;border:1px solid #ccc;text-align:center;color:{cor_status};font-weight:bold;">{it['status']}</td>
+                    <td style="padding:6px 8px;border:1px solid #e5e7eb;">{it['categoria']}</td>
+                    <td style="padding:6px 8px;border:1px solid #e5e7eb;"><strong>{it['nome']}</strong></td>
+                    <td style="padding:6px 8px;border:1px solid #e5e7eb;text-align:center;color:#dc2626;font-weight:bold;">{it['atual']} {it['unidade']}</td>
+                    <td style="padding:6px 8px;border:1px solid #e5e7eb;text-align:center;">{it['minimo']} {it['unidade']}</td>
+                    <td style="padding:6px 8px;border:1px solid #e5e7eb;text-align:center;color:#2563eb;font-weight:bold;">+{it['sugestao']} {it['unidade']}</td>
                 </tr>
             """
-        tabela_geral_html += "</tbody></table>"
+        linhas_alerta_html += "</tbody></table></div>"
 
-        html_body = f"""
-        <div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:20px;border:1px solid #e2e8f0;border-radius:10px;">
-            <div style="background:#1a73e8;color:white;padding:12px;border-radius:8px;margin-bottom:15px;">
-                <h2 style="margin:0;font-size:1.3rem;">🏨 {hotel} - Conferência de Freezers</h2>
-            </div>
-            <p style="font-size:15px;color:#475569;">
-                Data/Hora: <strong>{agora}</strong><br>
-                Conferente responsável: <strong>{conferente}</strong>
-            </p>
-            {linhas_alerta_html}
-            {tabela_geral_html}
-            <p style="font-size:12px;color:#94a3b8;margin-top:25px;text-align:center;">
-                Sistema Multi-Hotel Automatizado de Estoque
-            </p>
-        </div>
+    tabela_geral_html = f"""
+    <h3 style="color:#1e293b;margin:15px 0 8px 0;">📋 CONTAGEM COMPLETA - {hotel}</h3>
+    <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px;background:white;">
+        <thead>
+            <tr style="background:#334155;color:white;">
+                <th style="padding:8px;border:1px solid #cbd5e1;text-align:left;">Freezer</th>
+                <th style="padding:8px;border:1px solid #cbd5e1;text-align:left;">Item</th>
+                <th style="padding:8px;border:1px solid #cbd5e1;text-align:center;">Contado</th>
+                <th style="padding:8px;border:1px solid #cbd5e1;text-align:center;">Mínimo</th>
+                <th style="padding:8px;border:1px solid #cbd5e1;text-align:center;">Status</th>
+            </tr>
+        </thead>
+        <tbody>
+    """
+    for it in itens_conferidos:
+        cor_status = "#dc2626" if it['precisa_comprar'] else "#16a34a"
+        tabela_geral_html += f"""
+            <tr>
+                <td style="padding:6px 8px;border:1px solid #cbd5e1;">{it['categoria']}</td>
+                <td style="padding:6px 8px;border:1px solid #cbd5e1;">{it['nome']}</td>
+                <td style="padding:6px 8px;border:1px solid #cbd5e1;text-align:center;font-weight:bold;">{it['atual']} {it['unidade']}</td>
+                <td style="padding:6px 8px;border:1px solid #cbd5e1;text-align:center;">{it['minimo']} {it['unidade']}</td>
+                <td style="padding:6px 8px;border:1px solid #cbd5e1;text-align:center;color:{cor_status};font-weight:bold;">{it['status']}</td>
+            </tr>
         """
+    tabela_geral_html += "</tbody></table>"
 
-        subject = f"🏨 [{hotel}] Conferência de Freezers ({agora}) {'[ALERTA DE COMPRAS]' if itens_alerta else ''}"
+    return f"""
+    <div style="font-family:Arial,sans-serif;max-width:720px;margin:0 auto;padding:20px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">
+        <div style="background:#1a73e8;color:white;padding:14px;border-radius:8px;margin-bottom:15px;">
+            <h2 style="margin:0;font-size:1.3rem;">🏨 {hotel} - Relatório de Conferência de Estoque</h2>
+        </div>
+        <p style="font-size:14px;color:#475569;margin-bottom:15px;">
+            Data/Hora: <strong>{agora}</strong><br>
+            Conferente responsável: <strong>{conferente}</strong><br>
+            Unidade: <strong>{hotel}</strong>
+        </p>
+        {linhas_alerta_html}
+        {tabela_geral_html}
+        <p style="font-size:12px;color:#94a3b8;margin-top:25px;text-align:center;">
+            Sistema de Gestão de Estoque dos Freezers do Hotel
+        </p>
+    </div>
+    """
 
-        if RESEND_API_KEY:
+def enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_alerta):
+    """Envia o e-mail via múltiplos métodos resilientes (SMTP, Resend ou Formspree)"""
+    subject = f"🏨 [{hotel}] Conferência de Freezers ({agora}) {'[ALERTA DE COMPRAS]' if itens_alerta else ''}"
+    html_body = gerar_html_email(hotel, conferente, agora, itens_conferidos, itens_alerta)
+    email_enviado = False
+    detalhes_erro = ""
+
+    # Método 1: Se SMTP configurado (Gmail, Brevo, SendGrid, etc.)
+    if SMTP_USER and SMTP_PASS:
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = f"Hotel Estoque <{SMTP_USER}>"
+            msg["To"] = EMAIL_DESTINO
+            msg.attach(MIMEText(html_body, "html"))
+
+            if SMTP_PORT == 465:
+                server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=10)
+            else:
+                server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10)
+                server.starttls()
+            
+            server.login(SMTP_USER, SMTP_PASS)
+            server.sendmail(SMTP_USER, [EMAIL_DESTINO], msg.as_string())
+            server.quit()
+            email_enviado = True
+            print("E-mail enviado com sucesso via SMTP!")
+        except Exception as e:
+            detalhes_erro = f"SMTP falhou: {e}"
+            print(detalhes_erro)
+
+    # Método 2: Resend API
+    if not email_enviado and RESEND_API_KEY:
+        try:
             req_data = json.dumps({
                 "from": f"{hotel} <onboarding@resend.dev>",
                 "to": [EMAIL_DESTINO],
@@ -216,24 +256,47 @@ def enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_a
                 data=req_data,
                 headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"}
             )
-            urllib.request.urlopen(req, timeout=10)
-        else:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status in (200, 201):
+                    email_enviado = True
+                    print("E-mail enviado via Resend!")
+        except Exception as e:
+            detalhes_erro += f" | Resend falhou: {e}"
+            print(f"Erro Resend: {e}")
+
+    # Método 3: Webhook Formspree com e-mail direto do cliente
+    if not email_enviado:
+        try:
             req_data = json.dumps({
-                "to": EMAIL_DESTINO,
+                "email": EMAIL_DESTINO,
+                "_replyto": EMAIL_DESTINO,
                 "subject": subject,
-                "html": html_body
+                "hotel": hotel,
+                "conferente": conferente,
+                "data_hora": agora,
+                "total_itens": len(itens_conferidos),
+                "total_alertas": len(itens_alerta),
+                "resumo_alertas": ", ".join([f"{it['nome']} (Faltam {it['sugestao']} {it['unidade']})" for it in itens_alerta]) if itens_alerta else "Nenhum item abaixo do mínimo",
+                "relatorio_html": html_body
             }).encode('utf-8')
+            
+            # Usando endpoint com o e-mail direto
             req = urllib.request.Request(
-                "https://formspree.io/f/mwkgyyqk",
+                f"https://formspree.io/{EMAIL_DESTINO}",
                 data=req_data,
-                headers={"Content-Type": "application/json"}
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                }
             )
-            try:
-                urllib.request.urlopen(req, timeout=5)
-            except Exception:
-                pass
-    except Exception as e:
-        print(f"Erro ao disparar e-mail: {e}")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                email_enviado = True
+                print("E-mail despachado via Formspree direto!")
+        except Exception as e:
+            detalhes_erro += f" | Formspree falhou: {e}"
+            print(f"Erro Formspree: {e}")
+
+    return email_enviado, detalhes_erro
 
 # --- ROTAS PRINCIPAIS ---
 
@@ -244,6 +307,18 @@ def index():
 @app.route("/api/hoteis")
 def listar_hoteis():
     return jsonify(HOTEIS_DISPONIVEIS)
+
+@app.route("/api/config-email")
+def obter_config_email():
+    """Retorna o status do e-mail para exibir na interface"""
+    tem_smtp = bool(SMTP_USER and SMTP_PASS)
+    tem_resend = bool(RESEND_API_KEY)
+    return jsonify({
+        "emailDestino": EMAIL_DESTINO,
+        "temSmtp": tem_smtp,
+        "temResend": tem_resend,
+        "smtpUser": SMTP_USER if tem_smtp else ""
+    })
 
 @app.route("/api/produtos")
 def listar_produtos():
@@ -411,12 +486,26 @@ def salvar_conferencia():
     conn.commit()
     conn.close()
     
-    enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_alerta)
+    # Enviar e-mail
+    email_enviado, erro_msg = enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_alerta)
     
+    # Gerar também os dados prontos para visualização e PDF imediato
     return jsonify({
         "sucesso": True,
         "mensagem": f"Conferência do {hotel} registrada com sucesso!",
-        "itensAlerta": len(itens_alerta)
+        "itensAlerta": len(itens_alerta),
+        "emailEnviado": email_enviado,
+        "emailDestino": EMAIL_DESTINO,
+        "detalhesEmail": erro_msg,
+        "dadosPdf": {
+            "hotel": hotel,
+            "conferente": conferente,
+            "dataHora": agora,
+            "totalItens": len(itens_conferidos),
+            "totalAlertas": len(itens_alerta),
+            "itensAlerta": itens_alerta,
+            "itens": itens_conferidos
+        }
     })
 
 # --- RELATÓRIOS DO HOTEL ---

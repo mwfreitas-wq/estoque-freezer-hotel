@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>Sistema de Estoque dos Freezers - Multi-Hotel</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Biblioteca jsPDF e autoTable para gerar PDF profissional direto no celular ou PC sem travar -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
   <style>
     :root {
       --primary: #1a73e8;
@@ -376,6 +380,26 @@
       font-size: 0.75rem;
     }
 
+    /* Botão de PDF e Ações */
+    .btn-pdf {
+      background: #d93025;
+      color: white;
+      border: none;
+      padding: 9px 14px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.2s;
+    }
+
+    .btn-pdf:hover {
+      background: #b31412;
+    }
+
     /* Gestão de Itens */
     .crud-item {
       background: white;
@@ -435,7 +459,7 @@
       border-radius: 14px;
       padding: 20px;
       width: 100%;
-      max-width: 440px;
+      max-width: 460px;
       box-shadow: 0 10px 25px rgba(0,0,0,0.15);
     }
   </style>
@@ -464,7 +488,7 @@
   <!-- Módulos de Navegação -->
   <div class="module-nav">
     <button class="module-btn active" onclick="trocarModulo('conferencia', this)">📝 Conferência Diária</button>
-    <button class="module-btn" onclick="trocarModulo('relatorios', this)">📊 Relatórios</button>
+    <button class="module-btn" onclick="trocarModulo('relatorios', this)">📊 Relatórios & PDF</button>
     <button class="module-btn" onclick="trocarModulo('gerenciar', this)">⚙️ Gerenciar Itens</button>
   </div>
 
@@ -488,10 +512,15 @@
 
     <!-- 2. MÓDULO: RELATÓRIOS -->
     <div id="viewRelatorios" class="view-section">
-      <div class="tabs" style="margin-bottom: 12px;">
-        <button class="tab-btn active" onclick="carregarSubRelatorio('atual', this)">📦 Estoque Atual</button>
-        <button class="tab-btn" onclick="carregarSubRelatorio('vendas', this)">📈 Vendas Dia a Dia</button>
-        <button class="tab-btn" onclick="carregarSubRelatorio('historico', this)">📅 Histórico</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap;">
+        <div class="tabs" style="margin-bottom:0;flex:1;min-width:240px;">
+          <button class="tab-btn active" onclick="carregarSubRelatorio('atual', this)">📦 Estoque Atual</button>
+          <button class="tab-btn" onclick="carregarSubRelatorio('vendas', this)">📈 Vendas Dia a Dia</button>
+          <button class="tab-btn" onclick="carregarSubRelatorio('historico', this)">📅 Histórico</button>
+        </div>
+        <button class="btn-pdf" id="btnExportarPdfRelatorio" onclick="exportarRelatorioAtualPdf()">
+          📄 Baixar PDF do Relatório
+        </button>
       </div>
 
       <div id="relatorioConteudo"></div>
@@ -508,7 +537,7 @@
   <!-- Botão Inferior de Envio da Conferência -->
   <div class="bottom-bar" id="barraInferior">
     <button class="btn-submit" id="btnSalvar" onclick="enviarConferencia()">
-      Salvar Conferência e Enviar Relatório por E-mail
+      Salvar Conferência Diária (Gera PDF e Notificação)
     </button>
   </div>
 
@@ -554,13 +583,19 @@
     </div>
   </div>
 
-  <!-- Modal de Feedback Geral -->
+  <!-- Modal de Feedback e Download Direto do PDF da Conferência -->
   <div class="modal-overlay" id="modalFeedback">
     <div class="modal-box" style="text-align: center;">
       <div id="feedbackIcon" style="font-size: 2.8rem; margin-bottom: 8px;">✅</div>
       <h3 id="feedbackTitulo" style="margin-bottom: 8px;">Conferência Salva!</h3>
       <p id="feedbackMsg" style="font-size: 0.9rem; color: #64748b; margin-bottom: 16px;"></p>
-      <button onclick="document.getElementById('modalFeedback').classList.remove('active')" style="width:100%;padding:10px;border:none;background:var(--primary);color:white;border-radius:8px;font-weight:600;cursor:pointer;">OK</button>
+      
+      <!-- Botão para Baixar PDF Imediatamente da conferência realizada -->
+      <button id="btnBaixarPdfConferencia" class="btn-pdf" style="width:100%;justify-content:center;padding:12px;margin-bottom:10px;font-size:0.95rem;">
+        📥 Salvar / Baixar Relatório em PDF
+      </button>
+
+      <button onclick="document.getElementById('modalFeedback').classList.remove('active')" style="width:100%;padding:10px;border:1px solid #cbd5e1;background:#f1f5f9;color:#334155;border-radius:8px;font-weight:600;cursor:pointer;">Fechar</button>
     </div>
   </div>
 
@@ -569,6 +604,8 @@
     let todosProdutos = [];
     let categoriaAtiva = 'Freezer Bebidas';
     let subRelatorioAtivo = 'atual';
+    let ultimoDadosConferencia = null;
+    let dadosRelatorioAtual = null;
 
     document.addEventListener("DOMContentLoaded", () => {
       document.getElementById('selectHotelAtivo').value = hotelAtivo;
@@ -683,7 +720,7 @@
 
       const btn = document.getElementById('btnSalvar');
       btn.disabled = true;
-      btn.innerText = `Salvando conferência do ${hotelAtivo}...`;
+      btn.innerText = `Processando conferência do ${hotelAtivo}...`;
 
       try {
         const res = await fetch('/api/salvar', {
@@ -697,20 +734,29 @@
         });
         const resp = await res.json();
         btn.disabled = false;
-        btn.innerText = "Salvar Conferência e Enviar Relatório por E-mail";
+        btn.innerText = "Salvar Conferência Diária (Gera PDF e Notificação)";
+
+        ultimoDadosConferencia = resp.dadosPdf;
+
+        let statusEmailTexto = resp.emailEnviado 
+          ? `Relatório despachado com sucesso para ${resp.emailDestino}.`
+          : `Conferência gravada no sistema. Você também pode salvar o PDF abaixo.`;
+
+        let msgFinal = `${statusEmailTexto}<br><br>` + (resp.itensAlerta > 0
+          ? `⚠️ <strong>${resp.itensAlerta} itens atingiram o estoque mínimo</strong> e requerem reposição!`
+          : `✅ Todos os produtos estão com estoque regular acima do mínimo.`);
 
         mostrarFeedback(
           "✅",
           `Conferência Salva! (${hotelAtivo})`,
-          resp.itensAlerta > 0
-            ? `Conferência do ${hotelAtivo} salva e e-mail com a contagem e ${resp.itensAlerta} alertas foi enviado para mwfreitas@gmail.com!`
-            : `Conferência do ${hotelAtivo} salva e resumo completo enviado para mwfreitas@gmail.com! Nenhum item atingiu o estoque mínimo.`
+          msgFinal,
+          true
         );
         carregarProdutos();
       } catch (err) {
         btn.disabled = false;
-        btn.innerText = "Salvar Conferência e Enviar Relatório por E-mail";
-        mostrarFeedback("❌", "Erro", "Não foi possível conectar com o servidor.");
+        btn.innerText = "Salvar Conferência Diária (Gera PDF e Notificação)";
+        mostrarFeedback("❌", "Erro", "Não foi possível conectar com o servidor.", false);
       }
     }
 
@@ -726,7 +772,7 @@
 
       if (tipo === 'atual') {
         const res = await fetch(`/api/relatorios/estoque-atual?hotel=${encodeURIComponent(hotelAtivo)}`);
-        const dados = await res.json();
+        dadosRelatorioAtual = await res.json();
         let html = `
           <div class="card" style="padding: 12px; margin-bottom: 10px;">
             <p style="font-size:0.85rem;color:#475569;">Estoque em tempo real do <strong>${hotelAtivo}</strong> com sugestão de compras.</p>
@@ -742,7 +788,7 @@
             </thead>
             <tbody>
         `;
-        dados.forEach(d => {
+        dadosRelatorioAtual.forEach(d => {
           html += `
             <tr>
               <td><strong>${d.nome}</strong><br><small style="color:#64748b;">${d.categoria}</small></td>
@@ -756,16 +802,16 @@
         div.innerHTML = html;
       } else if (tipo === 'vendas') {
         const res = await fetch(`/api/relatorios/comparativo-dias?hotel=${encodeURIComponent(hotelAtivo)}`);
-        const dados = await res.json();
-        if (!dados.disponivel) {
-          div.innerHTML = `<div class="card" style="text-align:center;padding:30px;"><p style="color:#64748b;">${dados.mensagem}</p></div>`;
+        dadosRelatorioAtual = await res.json();
+        if (!dadosRelatorioAtual.disponivel) {
+          div.innerHTML = `<div class="card" style="text-align:center;padding:30px;"><p style="color:#64748b;">${dadosRelatorioAtual.mensagem}</p></div>`;
           return;
         }
         let html = `
           <div class="card" style="padding: 12px; margin-bottom: 10px;">
             <p style="font-size:0.85rem;color:#475569;">
-              <strong>${hotelAtivo}</strong>: Comparativo entre <strong>${dados.diaAnterior}</strong> e <strong>${dados.diaRecente}</strong>.<br>
-              <strong>Total de saídas/consumo estimado:</strong> ${dados.totalSaidas} unidades
+              <strong>${hotelAtivo}</strong>: Comparativo entre <strong>${dadosRelatorioAtual.diaAnterior}</strong> e <strong>${dadosRelatorioAtual.diaRecente}</strong>.<br>
+              <strong>Total de saídas/consumo estimado:</strong> ${dadosRelatorioAtual.totalSaidas} unidades
             </p>
           </div>
           <table class="report-table">
@@ -779,7 +825,7 @@
             </thead>
             <tbody>
         `;
-        dados.itens.forEach(it => {
+        dadosRelatorioAtual.itens.forEach(it => {
           html += `
             <tr>
               <td><strong>${it.produto}</strong><br><small style="color:#64748b;">${it.categoria}</small></td>
@@ -793,7 +839,7 @@
         div.innerHTML = html;
       } else if (tipo === 'historico') {
         const res = await fetch(`/api/relatorios/conferencias-dia?hotel=${encodeURIComponent(hotelAtivo)}`);
-        const dados = await res.json();
+        dadosRelatorioAtual = await res.json();
         let html = `
           <table class="report-table">
             <thead>
@@ -806,7 +852,7 @@
             </thead>
             <tbody>
         `;
-        dados.forEach(d => {
+        dadosRelatorioAtual.forEach(d => {
           html += `
             <tr>
               <td>${d.data_hora}</td>
@@ -819,6 +865,168 @@
         html += '</tbody></table>';
         div.innerHTML = html;
       }
+    }
+
+    // --- GERADOR DE PDF PROFISSIONAL COM JSPDF ---
+    function gerarPdfConferencia(dados) {
+      if (!dados) {
+        alert("Sem dados de conferência disponíveis para gerar o PDF.");
+        return;
+      }
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      // Cabeçalho do PDF
+      doc.setFillColor(26, 115, 232); // Azul hotel
+      doc.rect(0, 0, 210, 24, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text(`HOTEL: ${dados.hotel.toUpperCase()}`, 14, 15);
+
+      doc.setTextColor(51, 65, 85);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Relatório de Conferência de Estoque dos Freezers`, 14, 32);
+      doc.text(`Data/Hora: ${dados.dataHora}`, 14, 38);
+      doc.text(`Conferente Responsável: ${dados.conferente}`, 14, 44);
+
+      let startYPos = 52;
+
+      // 1. Tabela de Alertas de Reposição (se houver)
+      if (dados.itensAlerta && dados.itensAlerta.length > 0) {
+        doc.setTextColor(217, 48, 37);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text(`⚠️ ITENS ABAIXO DO ESTOQUE MÍNIMO (SUGESTÃO DE COMPRA)`, 14, startYPos);
+
+        const rowsAlerta = dados.itensAlerta.map(it => [
+          it.categoria,
+          it.nome,
+          `${it.atual} ${it.unidade}`,
+          `${it.minimo} ${it.unidade}`,
+          `+${it.sugestao} ${it.unidade}`
+        ]);
+
+        doc.autoTable({
+          startY: startYPos + 4,
+          head: [['Freezer', 'Item', 'Estoque Atual', 'Estoque Mínimo', 'Comprar']],
+          body: rowsAlerta,
+          theme: 'grid',
+          headStyles: { fillColor: [217, 48, 37], textColor: 255, fontStyle: 'bold' },
+          styles: { fontSize: 9, cellPadding: 3 }
+        });
+
+        startYPos = doc.lastAutoTable.finalY + 12;
+      }
+
+      // 2. Tabela Geral de Itens Conferidos
+      doc.setTextColor(30, 41, 59);
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text(`CONTAGEM COMPLETA DOS FREEZERS (${dados.totalItens} ITENS)`, 14, startYPos);
+
+      const rowsGeral = dados.itens.map(it => [
+        it.categoria,
+        it.nome,
+        `${it.atual} ${it.unidade}`,
+        `${it.minimo} ${it.unidade}`,
+        it.status
+      ]);
+
+      doc.autoTable({
+        startY: startYPos + 4,
+        head: [['Freezer', 'Item', 'Contado', 'Mínimo', 'Status']],
+        body: rowsGeral,
+        theme: 'striped',
+        headStyles: { fillColor: [51, 65, 85], textColor: 255, fontStyle: 'bold' },
+        styles: { fontSize: 8.5, cellPadding: 2.5 }
+      });
+
+      // Rodapé
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text(`Gerado por Sistema de Estoque Hotel - Página ${i} de ${pageCount}`, 14, 290);
+      }
+
+      const nomeArquivo = `conferencia_${dados.hotel.replace(/\s+/g, '_')}_${dados.dataHora.replace(/[\/ :]/g, '_')}.pdf`;
+      doc.save(nomeArquivo);
+    }
+
+    function exportarRelatorioAtualPdf() {
+      if (!dadosRelatorioAtual) {
+        alert("Carregue o relatório antes de exportar.");
+        return;
+      }
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      doc.setFillColor(26, 115, 232);
+      doc.rect(0, 0, 210, 24, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text(`HOTEL: ${hotelAtivo.toUpperCase()}`, 14, 15);
+
+      doc.setTextColor(51, 65, 85);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Relatório de Estoque - Tipo: ${subRelatorioAtivo.toUpperCase()}`, 14, 32);
+      doc.text(`Data de Emissão: ${new Date().toLocaleString('pt-BR')}`, 14, 38);
+
+      if (subRelatorioAtivo === 'atual') {
+        const bodyRows = dadosRelatorioAtual.map(d => [
+          d.categoria,
+          d.nome,
+          `${d.estoque_atual} ${d.unidade}`,
+          `${d.estoque_minimo} ${d.unidade}`,
+          d.precisa_comprar ? `COMPRAR (+${d.sugestao_compra})` : 'OK'
+        ]);
+
+        doc.autoTable({
+          startY: 46,
+          head: [['Freezer', 'Item', 'Estoque Atual', 'Estoque Mínimo', 'Status / Compra']],
+          body: bodyRows,
+          theme: 'grid',
+          headStyles: { fillColor: [26, 115, 232] },
+          styles: { fontSize: 9 }
+        });
+      } else if (subRelatorioAtivo === 'vendas' && dadosRelatorioAtual.itens) {
+        doc.text(`Comparativo entre ${dadosRelatorioAtual.diaAnterior} e ${dadosRelatorioAtual.diaRecente} (Total de saídas: ${dadosRelatorioAtual.totalSaidas})`, 14, 44);
+        const bodyRows = dadosRelatorioAtual.itens.map(it => [
+          it.categoria,
+          it.produto,
+          it.qtdAnterior,
+          it.qtdAtual,
+          it.consumoVendas > 0 ? `-${it.consumoVendas}` : '0'
+        ]);
+        doc.autoTable({
+          startY: 50,
+          head: [['Freezer', 'Item', 'Qtd Anterior', 'Qtd Atual', 'Saídas / Vendas']],
+          body: bodyRows,
+          theme: 'grid',
+          headStyles: { fillColor: [51, 65, 85] }
+        });
+      } else if (subRelatorioAtivo === 'historico') {
+        const bodyRows = dadosRelatorioAtual.map(d => [
+          d.data_hora,
+          d.conferente,
+          d.total_itens,
+          d.total_alertas > 0 ? `${d.total_alertas} alertas` : 'OK'
+        ]);
+        doc.autoTable({
+          startY: 46,
+          head: [['Data/Hora', 'Conferente', 'Total Itens', 'Alertas']],
+          body: bodyRows,
+          theme: 'striped',
+          headStyles: { fillColor: [51, 65, 85] }
+        });
+      }
+
+      doc.save(`relatorio_${hotelAtivo.replace(/\s+/g, '_')}_${subRelatorioAtivo}.pdf`);
     }
 
     // --- GERENCIAMENTO DE PRODUTOS (CRUD) ---
@@ -896,7 +1104,7 @@
           fecharModalProduto();
           await carregarProdutos();
           renderizarListaCrud();
-          mostrarFeedback("✅", "Sucesso", resp.mensagem);
+          mostrarFeedback("✅", "Sucesso", resp.mensagem, false);
         } else {
           alert(resp.mensagem);
         }
@@ -920,7 +1128,7 @@
         if (resp.sucesso) {
           await carregarProdutos();
           renderizarListaCrud();
-          mostrarFeedback("✅", "Excluído", resp.mensagem);
+          mostrarFeedback("✅", "Excluído", resp.mensagem, false);
         } else {
           alert(resp.mensagem);
         }
@@ -929,10 +1137,19 @@
       }
     }
 
-    function mostrarFeedback(icone, titulo, msg) {
+    function mostrarFeedback(icone, titulo, msgHtml, permitePdf = false) {
       document.getElementById('feedbackIcon').innerText = icone;
       document.getElementById('feedbackTitulo').innerText = titulo;
-      document.getElementById('feedbackMsg').innerText = msg;
+      document.getElementById('feedbackMsg').innerHTML = msgHtml;
+      
+      const btnPdf = document.getElementById('btnBaixarPdfConferencia');
+      if (permitePdf && ultimoDadosConferencia) {
+        btnPdf.style.display = 'inline-flex';
+        btnPdf.onclick = () => gerarPdfConferencia(ultimoDadosConferencia);
+      } else {
+        btnPdf.style.display = 'none';
+      }
+      
       document.getElementById('modalFeedback').classList.add('active');
     }
   </script>
