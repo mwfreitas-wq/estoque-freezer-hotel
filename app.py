@@ -13,7 +13,7 @@ app = Flask(__name__, static_folder='.', static_url_path='')
 DB_FILE = os.environ.get("DB_FILE", "estoque_hotel.db")
 EMAIL_DESTINO = os.environ.get("EMAIL_DESTINO", "mwfreitas@gmail.com")
 
-# Credenciais SMTP opcionais (ex: Gmail App Password ou Brevo / SendGrid / Mailgun)
+# Credenciais SMTP opcionais
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
 SMTP_USER = os.environ.get("SMTP_USER", "")
@@ -21,15 +21,16 @@ SMTP_PASS = os.environ.get("SMTP_PASS", "")
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 
-HOTEIS_DISPONIVEIS = ["Hit Hotel", "Porto Salvador", "Ancoras"]
+# 4 Hotéis com estoques completamente independentes
+HOTEIS_DISPONIVEIS = ["Hit Hotel", "Porto Salvador", "Ancoras", "La Vista"]
 
 def get_db():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
 
-# Lista oficial de produtos
-NOVOS_PRODUTOS = [
+# Lista oficial de produtos padrão para novos hotéis
+PRODUTOS_PADRAO = [
     # Bebidas
     ("BEB-01", "Freezer Bebidas", "Cerveja Amstel 350ml", 24, 0, "lata"),
     ("BEB-02", "Freezer Bebidas", "Cerveja Heineken 350ml", 24, 0, "lata"),
@@ -70,7 +71,13 @@ NOVOS_PRODUTOS = [
     ("SOR-15", "Freezer Picolés e Sorvetes", "Picole Açaí", 15, 0, "un"),
     ("SOR-16", "Freezer Picolés e Sorvetes", "Picole Cookies'n Cream", 15, 0, "un"),
     ("SOR-17", "Freezer Picolés e Sorvetes", "Picole chocolate belga", 15, 0, "un"),
-    ("SOR-18", "Freezer Picolés e Sorvetes", "Picole chocolate zero açúcar", 15, 0, "un")
+    ("SOR-18", "Freezer Picolés e Sorvetes", "Picole chocolate zero açúcar", 15, 0, "un"),
+    # Utensílios Padrão
+    ("UT-01", "Utensílios", "Abridor de Garrafas", 5, 0, "un"),
+    ("UT-02", "Utensílios", "Copos de Vidro", 30, 0, "un"),
+    ("UT-03", "Utensílios", "Taças", 20, 0, "un"),
+    ("UT-04", "Utensílios", "Colher para Sorvete / Pás", 50, 0, "un"),
+    ("UT-05", "Utensílios", "Guardanapos (Pacote)", 10, 0, "pct")
 ]
 
 def inicializar_banco():
@@ -118,17 +125,27 @@ def inicializar_banco():
         )
     """)
 
-    # Popula o catálogo de cada hotel de forma isolada
+    # Popula o catálogo de cada hotel de forma isolada sem apagar dados existentes
     agora = datetime.now().strftime("%d/%m/%Y %H:%M")
     for hotel in HOTEIS_DISPONIVEIS:
         cursor.execute("SELECT COUNT(*) FROM produtos WHERE hotel = ?", (hotel,))
         qtd = cursor.fetchone()[0]
         if qtd == 0:
-            for it in NOVOS_PRODUTOS:
+            for it in PRODUTOS_PADRAO:
                 cursor.execute("""
                     INSERT OR REPLACE INTO produtos (id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (it[0], hotel, it[1], it[2], it[3], it[4], it[5], agora))
+        else:
+            # Garante que os utensílios padrão sejam adicionados aos hotéis que ainda não têm essa categoria
+            cursor.execute("SELECT COUNT(*) FROM produtos WHERE hotel = ? AND categoria = 'Utensílios'", (hotel,))
+            qtd_ut = cursor.fetchone()[0]
+            if qtd_ut == 0:
+                for it in [p for p in PRODUTOS_PADRAO if p[1] == "Utensílios"]:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO produtos (id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (it[0], hotel, it[1], it[2], it[3], it[4], it[5], agora))
 
     conn.commit()
     conn.close()
@@ -145,7 +162,7 @@ def gerar_html_email(hotel, conferente, agora, itens_conferidos, itens_alerta):
             <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px;background:white;">
                 <thead>
                     <tr style="background:#dc2626;color:white;">
-                        <th style="padding:8px;border:1px solid #e5e7eb;text-align:left;">Freezer</th>
+                        <th style="padding:8px;border:1px solid #e5e7eb;text-align:left;">Setor / Categoria</th>
                         <th style="padding:8px;border:1px solid #e5e7eb;text-align:left;">Item</th>
                         <th style="padding:8px;border:1px solid #e5e7eb;text-align:center;">Estoque Atual</th>
                         <th style="padding:8px;border:1px solid #e5e7eb;text-align:center;">Mínimo</th>
@@ -171,7 +188,7 @@ def gerar_html_email(hotel, conferente, agora, itens_conferidos, itens_alerta):
     <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px;background:white;">
         <thead>
             <tr style="background:#334155;color:white;">
-                <th style="padding:8px;border:1px solid #cbd5e1;text-align:left;">Freezer</th>
+                <th style="padding:8px;border:1px solid #cbd5e1;text-align:left;">Setor / Categoria</th>
                 <th style="padding:8px;border:1px solid #cbd5e1;text-align:left;">Item</th>
                 <th style="padding:8px;border:1px solid #cbd5e1;text-align:center;">Contado</th>
                 <th style="padding:8px;border:1px solid #cbd5e1;text-align:center;">Mínimo</th>
@@ -196,7 +213,7 @@ def gerar_html_email(hotel, conferente, agora, itens_conferidos, itens_alerta):
     return f"""
     <div style="font-family:Arial,sans-serif;max-width:720px;margin:0 auto;padding:20px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">
         <div style="background:#1a73e8;color:white;padding:14px;border-radius:8px;margin-bottom:15px;">
-            <h2 style="margin:0;font-size:1.3rem;">🏨 {hotel} - Relatório de Conferência de Estoque</h2>
+            <h2 style="margin:0;font-size:1.3rem;">🏨 {hotel} - Relatório de Estoque (Freezers e Utensílios)</h2>
         </div>
         <p style="font-size:14px;color:#475569;margin-bottom:15px;">
             Data/Hora: <strong>{agora}</strong><br>
@@ -206,19 +223,18 @@ def gerar_html_email(hotel, conferente, agora, itens_conferidos, itens_alerta):
         {linhas_alerta_html}
         {tabela_geral_html}
         <p style="font-size:12px;color:#94a3b8;margin-top:25px;text-align:center;">
-            Sistema de Gestão de Estoque dos Freezers do Hotel
+            Sistema de Gestão de Estoque dos Freezers e Utensílios do Hotel
         </p>
     </div>
     """
 
 def enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_alerta):
-    """Envia o e-mail via múltiplos métodos resilientes (SMTP, Resend ou Formspree)"""
-    subject = f"🏨 [{hotel}] Conferência de Freezers ({agora}) {'[ALERTA DE COMPRAS]' if itens_alerta else ''}"
+    subject = f"🏨 [{hotel}] Conferência de Estoque ({agora}) {'[ALERTA DE COMPRAS]' if itens_alerta else ''}"
     html_body = gerar_html_email(hotel, conferente, agora, itens_conferidos, itens_alerta)
     email_enviado = False
     detalhes_erro = ""
 
-    # Método 1: Se SMTP configurado (Gmail, Brevo, SendGrid, etc.)
+    # Método 1: Se SMTP configurado
     if SMTP_USER and SMTP_PASS:
         try:
             msg = MIMEMultipart("alternative")
@@ -237,10 +253,8 @@ def enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_a
             server.sendmail(SMTP_USER, [EMAIL_DESTINO], msg.as_string())
             server.quit()
             email_enviado = True
-            print("E-mail enviado com sucesso via SMTP!")
         except Exception as e:
             detalhes_erro = f"SMTP falhou: {e}"
-            print(detalhes_erro)
 
     # Método 2: Resend API
     if not email_enviado and RESEND_API_KEY:
@@ -259,12 +273,10 @@ def enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_a
             with urllib.request.urlopen(req, timeout=10) as resp:
                 if resp.status in (200, 201):
                     email_enviado = True
-                    print("E-mail enviado via Resend!")
         except Exception as e:
             detalhes_erro += f" | Resend falhou: {e}"
-            print(f"Erro Resend: {e}")
 
-    # Método 3: Webhook Formspree com e-mail direto do cliente
+    # Método 3: Webhook Formspree direto
     if not email_enviado:
         try:
             req_data = json.dumps({
@@ -280,21 +292,15 @@ def enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_a
                 "relatorio_html": html_body
             }).encode('utf-8')
             
-            # Usando endpoint com o e-mail direto
             req = urllib.request.Request(
                 f"https://formspree.io/{EMAIL_DESTINO}",
                 data=req_data,
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "application/json"
-                }
+                headers={"Content-Type": "application/json", "Accept": "application/json"}
             )
             with urllib.request.urlopen(req, timeout=10) as resp:
                 email_enviado = True
-                print("E-mail despachado via Formspree direto!")
         except Exception as e:
             detalhes_erro += f" | Formspree falhou: {e}"
-            print(f"Erro Formspree: {e}")
 
     return email_enviado, detalhes_erro
 
@@ -310,7 +316,6 @@ def listar_hoteis():
 
 @app.route("/api/config-email")
 def obter_config_email():
-    """Retorna o status do e-mail para exibir na interface"""
     tem_smtp = bool(SMTP_USER and SMTP_PASS)
     tem_resend = bool(RESEND_API_KEY)
     return jsonify({
@@ -357,7 +362,13 @@ def adicionar_produto():
     conn = get_db()
     cursor = conn.cursor()
     
-    prefix = "BEB" if "Bebidas" in categoria else "SOR"
+    if "Bebidas" in categoria:
+        prefix = "BEB"
+    elif "Sorvetes" in categoria or "Picolé" in categoria:
+        prefix = "SOR"
+    else:
+        prefix = "UT"
+        
     cursor.execute("SELECT COUNT(*) FROM produtos WHERE hotel = ? AND categoria = ?", (hotel, categoria))
     prox_num = cursor.fetchone()[0] + 1
     novo_id = f"{prefix}-{prox_num:02d}-{int(datetime.now().timestamp())%10000}"
@@ -486,10 +497,8 @@ def salvar_conferencia():
     conn.commit()
     conn.close()
     
-    # Enviar e-mail
     email_enviado, erro_msg = enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_alerta)
     
-    # Gerar também os dados prontos para visualização e PDF imediato
     return jsonify({
         "sucesso": True,
         "mensagem": f"Conferência do {hotel} registrada com sucesso!",

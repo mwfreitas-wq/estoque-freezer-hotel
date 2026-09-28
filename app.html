@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>Sistema de Estoque dos Freezers - Multi-Hotel</title>
+  <title>Sistema de Estoque dos Freezers & Utensílios - Multi-Hotel</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <!-- Biblioteca jsPDF e autoTable para gerar PDF profissional direto no celular ou PC sem travar -->
+  <!-- Biblioteca jsPDF e autoTable para gerar PDF profissional direto no celular ou PC -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
@@ -134,7 +134,7 @@
     }
 
     .container {
-      max-width: 700px;
+      max-width: 720px;
       margin: 0 auto;
       padding: 16px;
     }
@@ -181,22 +181,25 @@
       border-color: var(--primary);
     }
 
-    /* Tabs dos Freezers */
+    /* Tabs dos Freezers e Utensílios */
     .tabs {
       display: flex;
       background: #e2e8f0;
       padding: 4px;
       border-radius: 10px;
       margin-bottom: 14px;
+      gap: 4px;
+      overflow-x: auto;
     }
 
     .tab-btn {
       flex: 1;
-      padding: 9px;
+      min-width: 100px;
+      padding: 9px 6px;
       border: none;
       background: transparent;
       font-weight: 600;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       color: var(--text-muted);
       border-radius: 8px;
       cursor: pointer;
@@ -204,7 +207,8 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
+      gap: 5px;
+      white-space: nowrap;
     }
 
     .tab-btn.active {
@@ -321,7 +325,7 @@
 
     .btn-submit {
       width: 100%;
-      max-width: 700px;
+      max-width: 720px;
       margin: 0 auto;
       display: block;
       background: var(--primary);
@@ -473,14 +477,15 @@
       <option value="Hit Hotel">Hit Hotel</option>
       <option value="Porto Salvador">Porto Salvador</option>
       <option value="Ancoras">Ancoras</option>
+      <option value="La Vista">La Vista</option>
     </select>
   </div>
 
   <!-- Header -->
   <header>
     <div class="header-title">
-      <h1>Controle de Freezers</h1>
-      <p id="subtituloHotel">Estoque de Bebidas e Sorvetes</p>
+      <h1>Controle de Estoque</h1>
+      <p id="subtituloHotel">Freezers & Utensílios</p>
     </div>
     <div class="hotel-badge" id="badgeHotel">Hit Hotel</div>
   </header>
@@ -498,12 +503,13 @@
     <div id="viewConferencia" class="view-section active">
       <div class="card">
         <label for="nomeConferente">👤 Nome do Conferente:</label>
-        <input type="text" id="nomeConferente" placeholder="Ex: Carlos (Recepção / Bar)" required>
+        <input type="text" id="nomeConferente" placeholder="Ex: Carlos (Recepção / Governança)" required>
       </div>
 
       <div class="tabs">
-        <button class="tab-btn active" onclick="filtrarCategoria('Freezer Bebidas', this)">🥤 Freezer Bebidas</button>
+        <button class="tab-btn active" onclick="filtrarCategoria('Freezer Bebidas', this)">🥤 Bebidas</button>
         <button class="tab-btn" onclick="filtrarCategoria('Freezer Picolés e Sorvetes', this)">🍦 Picolés & Sorvetes</button>
+        <button class="tab-btn" onclick="filtrarCategoria('Utensílios', this)">🍴 Utensílios</button>
       </div>
 
       <div id="loadingItens" style="text-align: center; padding: 25px; color: #64748b;">Carregando produtos...</div>
@@ -515,7 +521,7 @@
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap;">
         <div class="tabs" style="margin-bottom:0;flex:1;min-width:240px;">
           <button class="tab-btn active" onclick="carregarSubRelatorio('atual', this)">📦 Estoque Atual</button>
-          <button class="tab-btn" onclick="carregarSubRelatorio('vendas', this)">📈 Vendas Dia a Dia</button>
+          <button class="tab-btn" onclick="carregarSubRelatorio('vendas', this)">📈 Consumo / Vendas</button>
           <button class="tab-btn" onclick="carregarSubRelatorio('historico', this)">📅 Histórico</button>
         </div>
         <button class="btn-pdf" id="btnExportarPdfRelatorio" onclick="exportarRelatorioAtualPdf()">
@@ -528,7 +534,7 @@
 
     <!-- 3. MÓDULO: GERENCIAR ITENS & ESTOQUE MÍNIMO -->
     <div id="viewGerenciar" class="view-section">
-      <button class="btn-add" onclick="abrirModalProduto()">➕ Adicionar Novo Produto</button>
+      <button class="btn-add" onclick="abrirModalProduto()">➕ Adicionar Novo Item / Utensílio</button>
       <div id="listaCrudItens"></div>
     </div>
 
@@ -549,26 +555,28 @@
       
       <div style="margin-bottom: 10px;">
         <label style="font-size:0.8rem;font-weight:600;">Nome do Item:</label>
-        <input type="text" id="crudProdNome" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-top:4px;" placeholder="Ex: Cerveja Corona 350ml">
+        <input type="text" id="crudProdNome" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-top:4px;" placeholder="Ex: Copos de Vidro / Abridor">
       </div>
 
       <div style="margin-bottom: 10px;" id="divCategoriaCrud">
-        <label style="font-size:0.8rem;font-weight:600;">Freezer / Categoria:</label>
+        <label style="font-size:0.8rem;font-weight:600;">Setor / Categoria:</label>
         <select id="crudProdCategoria" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-top:4px;">
           <option value="Freezer Bebidas">Freezer Bebidas</option>
           <option value="Freezer Picolés e Sorvetes">Freezer Picolés e Sorvetes</option>
+          <option value="Utensílios">Utensílios</option>
         </select>
       </div>
 
       <div style="display:flex;gap:10px;margin-bottom:16px;">
         <div style="flex:1;">
           <label style="font-size:0.8rem;font-weight:600;">Estoque Mínimo:</label>
-          <input type="number" id="crudProdMinimo" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-top:4px;" min="1" value="15">
+          <input type="number" id="crudProdMinimo" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-top:4px;" min="1" value="10">
         </div>
         <div style="flex:1;">
           <label style="font-size:0.8rem;font-weight:600;">Unidade:</label>
           <select id="crudProdUnidade" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;margin-top:4px;">
-            <option value="un">un</option>
+            <option value="un">un (unidade)</option>
+            <option value="pct">pct (pacote)</option>
             <option value="lata">lata</option>
             <option value="garrafa">garrafa</option>
             <option value="pote">pote</option>
@@ -676,6 +684,11 @@
       container.innerHTML = '';
       const filtrados = todosProdutos.filter(p => p.categoria === categoriaAtiva);
 
+      if (filtrados.length === 0) {
+        container.innerHTML = `<div class="card" style="text-align:center;padding:24px;color:#64748b;">Nenhum item cadastrado em <strong>${categoriaAtiva}</strong> para o ${hotelAtivo}.<br><br><button class="btn-add" style="margin:0 auto;" onclick="trocarModulo('gerenciar', document.querySelectorAll('.module-btn')[2])">Cadastrar Item</button></div>`;
+        return;
+      }
+
       filtrados.forEach(item => {
         const div = document.createElement('div');
         div.className = 'item-card';
@@ -744,7 +757,7 @@
 
         let msgFinal = `${statusEmailTexto}<br><br>` + (resp.itensAlerta > 0
           ? `⚠️ <strong>${resp.itensAlerta} itens atingiram o estoque mínimo</strong> e requerem reposição!`
-          : `✅ Todos os produtos estão com estoque regular acima do mínimo.`);
+          : `✅ Todos os produtos e utensílios estão com estoque regular.`);
 
         mostrarFeedback(
           "✅",
@@ -780,7 +793,7 @@
           <table class="report-table">
             <thead>
               <tr>
-                <th>Item</th>
+                <th>Item / Setor</th>
                 <th>Atual</th>
                 <th>Mínimo</th>
                 <th>Status / Compra</th>
@@ -817,10 +830,10 @@
           <table class="report-table">
             <thead>
               <tr>
-                <th>Produto</th>
+                <th>Produto / Utensílio</th>
                 <th>Estq Anterior</th>
                 <th>Estq Atual</th>
-                <th>Saídas / Vendas</th>
+                <th>Saídas / Consumo</th>
               </tr>
             </thead>
             <tbody>
@@ -876,8 +889,7 @@
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
 
-      // Cabeçalho do PDF
-      doc.setFillColor(26, 115, 232); // Azul hotel
+      doc.setFillColor(26, 115, 232);
       doc.rect(0, 0, 210, 24, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(16);
@@ -887,13 +899,12 @@
       doc.setTextColor(51, 65, 85);
       doc.setFontSize(11);
       doc.setFont("helvetica", "normal");
-      doc.text(`Relatório de Conferência de Estoque dos Freezers`, 14, 32);
+      doc.text(`Relatório de Conferência de Estoque (Freezers & Utensílios)`, 14, 32);
       doc.text(`Data/Hora: ${dados.dataHora}`, 14, 38);
       doc.text(`Conferente Responsável: ${dados.conferente}`, 14, 44);
 
       let startYPos = 52;
 
-      // 1. Tabela de Alertas de Reposição (se houver)
       if (dados.itensAlerta && dados.itensAlerta.length > 0) {
         doc.setTextColor(217, 48, 37);
         doc.setFontSize(12);
@@ -910,7 +921,7 @@
 
         doc.autoTable({
           startY: startYPos + 4,
-          head: [['Freezer', 'Item', 'Estoque Atual', 'Estoque Mínimo', 'Comprar']],
+          head: [['Setor / Categoria', 'Item', 'Estoque Atual', 'Estoque Mínimo', 'Comprar']],
           body: rowsAlerta,
           theme: 'grid',
           headStyles: { fillColor: [217, 48, 37], textColor: 255, fontStyle: 'bold' },
@@ -920,11 +931,10 @@
         startYPos = doc.lastAutoTable.finalY + 12;
       }
 
-      // 2. Tabela Geral de Itens Conferidos
       doc.setTextColor(30, 41, 59);
       doc.setFontSize(12);
       doc.setFont("helvetica", "bold");
-      doc.text(`CONTAGEM COMPLETA DOS FREEZERS (${dados.totalItens} ITENS)`, 14, startYPos);
+      doc.text(`CONTAGEM COMPLETA (${dados.totalItens} ITENS)`, 14, startYPos);
 
       const rowsGeral = dados.itens.map(it => [
         it.categoria,
@@ -936,14 +946,13 @@
 
       doc.autoTable({
         startY: startYPos + 4,
-        head: [['Freezer', 'Item', 'Contado', 'Mínimo', 'Status']],
+        head: [['Setor / Categoria', 'Item', 'Contado', 'Mínimo', 'Status']],
         body: rowsGeral,
         theme: 'striped',
         headStyles: { fillColor: [51, 65, 85], textColor: 255, fontStyle: 'bold' },
         styles: { fontSize: 8.5, cellPadding: 2.5 }
       });
 
-      // Rodapé
       const pageCount = doc.internal.getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
@@ -988,7 +997,7 @@
 
         doc.autoTable({
           startY: 46,
-          head: [['Freezer', 'Item', 'Estoque Atual', 'Estoque Mínimo', 'Status / Compra']],
+          head: [['Setor / Categoria', 'Item', 'Estoque Atual', 'Estoque Mínimo', 'Status / Compra']],
           body: bodyRows,
           theme: 'grid',
           headStyles: { fillColor: [26, 115, 232] },
@@ -1005,7 +1014,7 @@
         ]);
         doc.autoTable({
           startY: 50,
-          head: [['Freezer', 'Item', 'Qtd Anterior', 'Qtd Atual', 'Saídas / Vendas']],
+          head: [['Setor / Categoria', 'Item', 'Qtd Anterior', 'Qtd Atual', 'Saídas / Consumo']],
           body: bodyRows,
           theme: 'grid',
           headStyles: { fillColor: [51, 65, 85] }
@@ -1052,10 +1061,10 @@
     }
 
     function abrirModalProduto() {
-      document.getElementById('modalProdutoTitulo').innerText = `Adicionar Novo Item ao ${hotelAtivo}`;
+      document.getElementById('modalProdutoTitulo').innerText = `Adicionar Item / Utensílio ao ${hotelAtivo}`;
       document.getElementById('crudProdId').value = '';
       document.getElementById('crudProdNome').value = '';
-      document.getElementById('crudProdMinimo').value = '15';
+      document.getElementById('crudProdMinimo').value = '10';
       document.getElementById('divCategoriaCrud').style.display = 'block';
       document.getElementById('modalProduto').classList.add('active');
     }
@@ -1084,7 +1093,7 @@
       const categoria = document.getElementById('crudProdCategoria').value;
 
       if (!nome) {
-        alert("O nome do produto é obrigatório!");
+        alert("O nome do item é obrigatório!");
         return;
       }
 
