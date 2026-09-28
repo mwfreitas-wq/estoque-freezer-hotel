@@ -19,7 +19,7 @@ except ImportError:
 app = Flask(__name__, static_folder='.', static_url_path='')
 
 # Banco de dados: Se DATABASE_URL estiver configurada (Neon), usa Postgres na nuvem!
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://neondb_owner:npg_1MIFPkXq2nja@ep-sweet-pine-b4td0byr-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 DB_FILE = os.environ.get("DB_FILE", "estoque_hotel.db")
 EMAIL_DESTINO = os.environ.get("EMAIL_DESTINO", "mwfreitas@gmail.com")
 
