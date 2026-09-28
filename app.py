@@ -8,28 +8,65 @@ from email.mime.text import MIMEText
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
 
+# Suporte ao PostgreSQL do Neon
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    TEM_POSTGRES = True
+except ImportError:
+    TEM_POSTGRES = False
+
 app = Flask(__name__, static_folder='.', static_url_path='')
 
+# Banco de dados: Se DATABASE_URL estiver configurada (Neon), usa Postgres na nuvem!
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://neondb_owner:npg_1MIFPkXq2nja@ep-sweet-pine-b4td0byr-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require")
 DB_FILE = os.environ.get("DB_FILE", "estoque_hotel.db")
 EMAIL_DESTINO = os.environ.get("EMAIL_DESTINO", "mwfreitas@gmail.com")
 
-# Credenciais SMTP opcionais
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
 SMTP_USER = os.environ.get("SMTP_USER", "")
 SMTP_PASS = os.environ.get("SMTP_PASS", "")
-
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 
-# 4 Hotéis com estoques completamente independentes
 HOTEIS_DISPONIVEIS = ["Hit Hotel", "Porto Salvador", "Ancoras", "La Vista"]
 
-def get_db():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
+class DBConnWrapper:
+    """Wrapper para unificar SQLite e PostgreSQL do Neon com a mesma interface amigável"""
+    def __init__(self):
+        self.is_pg = False
+        self.conn = None
+        if TEM_POSTGRES and DATABASE_URL and DATABASE_URL.startswith("postgres"):
+            try:
+                # Ajusta sslmode se necessário
+                db_url = DATABASE_URL
+                if "channel_binding" in db_url:
+                    db_url = db_url.split("&channel_binding")[0]
+                self.conn = psycopg2.connect(db_url)
+                self.is_pg = True
+            except Exception as e:
+                print(f"Aviso: Falha ao conectar no Postgres ({e}), usando fallback SQLite.")
+                self.conn = sqlite3.connect(DB_FILE)
+                self.conn.row_factory = sqlite3.Row
+        else:
+            self.conn = sqlite3.connect(DB_FILE)
+            self.conn.row_factory = sqlite3.Row
 
-# Lista oficial de produtos padrão para novos hotéis
+    def cursor(self):
+        if self.is_pg:
+            return self.conn.cursor(cursor_factory=RealDictCursor)
+        return self.conn.cursor()
+
+    def commit(self):
+        self.conn.commit()
+
+    def close(self):
+        self.conn.close()
+
+def get_db():
+    return DBConnWrapper()
+
+# Lista oficial de produtos
 PRODUTOS_PADRAO = [
     # Bebidas
     ("BEB-01", "Freezer Bebidas", "Cerveja Amstel 350ml", 24, 0, "lata"),
@@ -81,9 +118,12 @@ PRODUTOS_PADRAO = [
 ]
 
 def inicializar_banco():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
+    db = get_db()
+    cursor = db.cursor()
+
+    id_auto_col = "SERIAL PRIMARY KEY" if db.is_pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS produtos (
             id TEXT,
             hotel TEXT,
@@ -96,9 +136,9 @@ def inicializar_banco():
             PRIMARY KEY (id, hotel)
         )
     """)
-    cursor.execute("""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS conferencias (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {id_auto_col},
             hotel TEXT,
             data_hora TEXT,
             data_dia TEXT,
@@ -107,9 +147,9 @@ def inicializar_banco():
             total_alertas INTEGER
         )
     """)
-    cursor.execute("""
+    cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS historico (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {id_auto_col},
             conferencia_id INTEGER,
             hotel TEXT,
             data_hora TEXT,
@@ -125,30 +165,46 @@ def inicializar_banco():
         )
     """)
 
-    # Popula o catálogo de cada hotel de forma isolada sem apagar dados existentes
+    # Popula produtos nos 4 hotéis se ainda não existirem
     agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+    param_char = "%s" if db.is_pg else "?"
+
     for hotel in HOTEIS_DISPONIVEIS:
-        cursor.execute("SELECT COUNT(*) FROM produtos WHERE hotel = ?", (hotel,))
-        qtd = cursor.fetchone()[0]
+        cursor.execute(f"SELECT COUNT(*) FROM produtos WHERE hotel = {param_char}", (hotel,))
+        qtd = list(cursor.fetchone().values())[0] if db.is_pg else cursor.fetchone()[0]
         if qtd == 0:
             for it in PRODUTOS_PADRAO:
-                cursor.execute("""
-                    INSERT OR REPLACE INTO produtos (id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (it[0], hotel, it[1], it[2], it[3], it[4], it[5], agora))
-        else:
-            # Garante que os utensílios padrão sejam adicionados aos hotéis que ainda não têm essa categoria
-            cursor.execute("SELECT COUNT(*) FROM produtos WHERE hotel = ? AND categoria = 'Utensílios'", (hotel,))
-            qtd_ut = cursor.fetchone()[0]
-            if qtd_ut == 0:
-                for it in [p for p in PRODUTOS_PADRAO if p[1] == "Utensílios"]:
+                if db.is_pg:
+                    cursor.execute("""
+                        INSERT INTO produtos (id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (id, hotel) DO NOTHING
+                    """, (it[0], hotel, it[1], it[2], it[3], it[4], it[5], agora))
+                else:
                     cursor.execute("""
                         INSERT OR REPLACE INTO produtos (id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """, (it[0], hotel, it[1], it[2], it[3], it[4], it[5], agora))
+        else:
+            # Garante que Utensílios estejam presentes
+            cursor.execute(f"SELECT COUNT(*) FROM produtos WHERE hotel = {param_char} AND categoria = 'Utensílios'", (hotel,))
+            qtd_ut = list(cursor.fetchone().values())[0] if db.is_pg else cursor.fetchone()[0]
+            if qtd_ut == 0:
+                for it in [p for p in PRODUTOS_PADRAO if p[1] == "Utensílios"]:
+                    if db.is_pg:
+                        cursor.execute("""
+                            INSERT INTO produtos (id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (id, hotel) DO NOTHING
+                        """, (it[0], hotel, it[1], it[2], it[3], it[4], it[5], agora))
+                    else:
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO produtos (id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (it[0], hotel, it[1], it[2], it[3], it[4], it[5], agora))
 
-    conn.commit()
-    conn.close()
+    db.commit()
+    db.close()
 
 inicializar_banco()
 
@@ -223,7 +279,7 @@ def gerar_html_email(hotel, conferente, agora, itens_conferidos, itens_alerta):
         {linhas_alerta_html}
         {tabela_geral_html}
         <p style="font-size:12px;color:#94a3b8;margin-top:25px;text-align:center;">
-            Sistema de Gestão de Estoque dos Freezers e Utensílios do Hotel
+            Sistema de Gestão de Estoque Permanente (Neon Cloud DB)
         </p>
     </div>
     """
@@ -234,7 +290,6 @@ def enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_a
     email_enviado = False
     detalhes_erro = ""
 
-    # Método 1: Se SMTP configurado
     if SMTP_USER and SMTP_PASS:
         try:
             msg = MIMEMultipart("alternative")
@@ -256,7 +311,6 @@ def enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_a
         except Exception as e:
             detalhes_erro = f"SMTP falhou: {e}"
 
-    # Método 2: Resend API
     if not email_enviado and RESEND_API_KEY:
         try:
             req_data = json.dumps({
@@ -276,7 +330,6 @@ def enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_a
         except Exception as e:
             detalhes_erro += f" | Resend falhou: {e}"
 
-    # Método 3: Webhook Formspree direto
     if not email_enviado:
         try:
             req_data = json.dumps({
@@ -314,37 +367,29 @@ def index():
 def listar_hoteis():
     return jsonify(HOTEIS_DISPONIVEIS)
 
-@app.route("/api/config-email")
-def obter_config_email():
-    tem_smtp = bool(SMTP_USER and SMTP_PASS)
-    tem_resend = bool(RESEND_API_KEY)
-    return jsonify({
-        "emailDestino": EMAIL_DESTINO,
-        "temSmtp": tem_smtp,
-        "temResend": tem_resend,
-        "smtpUser": SMTP_USER if tem_smtp else ""
-    })
-
 @app.route("/api/produtos")
 def listar_produtos():
     hotel = request.args.get("hotel", "Hit Hotel")
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao FROM produtos WHERE hotel = ? ORDER BY categoria, nome", (hotel,))
+    db = get_db()
+    cursor = db.cursor()
+    param = "%s" if db.is_pg else "?"
+    cursor.execute(f"SELECT id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao FROM produtos WHERE hotel = {param} ORDER BY categoria, nome", (hotel,))
     linhas = cursor.fetchall()
-    conn.close()
+    db.close()
     
-    produtos = [{
-        "id": l["id"],
-        "hotel": l["hotel"],
-        "categoria": l["categoria"],
-        "nome": l["nome"],
-        "estoqueMinimo": l["estoque_minimo"],
-        "estoqueAtual": l["estoque_atual"],
-        "unidade": l["unidade"],
-        "ultimaAtualizacao": l["ultima_atualizacao"]
-    } for l in linhas]
-    
+    produtos = []
+    for l in linhas:
+        d = dict(l)
+        produtos.append({
+            "id": d["id"],
+            "hotel": d["hotel"],
+            "categoria": d["categoria"],
+            "nome": d["nome"],
+            "estoqueMinimo": d["estoque_minimo"],
+            "estoqueAtual": d["estoque_atual"],
+            "unidade": d["unidade"],
+            "ultimaAtualizacao": d["ultima_atualizacao"]
+        })
     return jsonify(produtos)
 
 @app.route("/api/produtos/adicionar", methods=["POST"])
@@ -359,8 +404,9 @@ def adicionar_produto():
     if not nome:
         return jsonify({"sucesso": False, "mensagem": "Nome do item é obrigatório"}), 400
 
-    conn = get_db()
-    cursor = conn.cursor()
+    db = get_db()
+    cursor = db.cursor()
+    param = "%s" if db.is_pg else "?"
     
     if "Bebidas" in categoria:
         prefix = "BEB"
@@ -369,19 +415,27 @@ def adicionar_produto():
     else:
         prefix = "UT"
         
-    cursor.execute("SELECT COUNT(*) FROM produtos WHERE hotel = ? AND categoria = ?", (hotel, categoria))
-    prox_num = cursor.fetchone()[0] + 1
-    novo_id = f"{prefix}-{prox_num:02d}-{int(datetime.now().timestamp())%10000}"
+    cursor.execute(f"SELECT COUNT(*) FROM produtos WHERE hotel = {param} AND categoria = {param}", (hotel, categoria))
+    row = cursor.fetchone()
+    total = list(row.values())[0] if db.is_pg else row[0]
+    novo_id = f"{prefix}-{total+1:02d}-{int(datetime.now().timestamp())%10000}"
     
     agora = datetime.now().strftime("%d/%m/%Y %H:%M")
-    cursor.execute("""
-        INSERT INTO produtos (id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (novo_id, hotel, categoria, nome, minimo, 0, unidade, agora))
-    conn.commit()
-    conn.close()
+    if db.is_pg:
+        cursor.execute("""
+            INSERT INTO produtos (id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (novo_id, hotel, categoria, nome, minimo, 0, unidade, agora))
+    else:
+        cursor.execute("""
+            INSERT INTO produtos (id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (novo_id, hotel, categoria, nome, minimo, 0, unidade, agora))
+        
+    db.commit()
+    db.close()
     
-    return jsonify({"sucesso": True, "mensagem": f"Produto adicionado ao {hotel} com sucesso!", "id": novo_id})
+    return jsonify({"sucesso": True, "mensagem": f"Item adicionado ao {hotel} com sucesso!", "id": novo_id})
 
 @app.route("/api/produtos/editar", methods=["POST"])
 def editar_produto():
@@ -395,15 +449,21 @@ def editar_produto():
     if not p_id or not nome:
         return jsonify({"sucesso": False, "mensagem": "Dados inválidos"}), 400
 
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE produtos SET nome = ?, estoque_minimo = ?, unidade = ? WHERE id = ? AND hotel = ?
-    """, (nome, minimo, unidade, p_id, hotel))
-    conn.commit()
-    conn.close()
+    db = get_db()
+    cursor = db.cursor()
+    if db.is_pg:
+        cursor.execute("""
+            UPDATE produtos SET nome = %s, estoque_minimo = %s, unidade = %s WHERE id = %s AND hotel = %s
+        """, (nome, minimo, unidade, p_id, hotel))
+    else:
+        cursor.execute("""
+            UPDATE produtos SET nome = ?, estoque_minimo = ?, unidade = ? WHERE id = ? AND hotel = ?
+        """, (nome, minimo, unidade, p_id, hotel))
+        
+    db.commit()
+    db.close()
     
-    return jsonify({"sucesso": True, "mensagem": f"Produto atualizado no {hotel} com sucesso!"})
+    return jsonify({"sucesso": True, "mensagem": f"Item atualizado no {hotel} com sucesso!"})
 
 @app.route("/api/produtos/excluir", methods=["POST"])
 def excluir_produto():
@@ -411,24 +471,26 @@ def excluir_produto():
     hotel = dados.get("hotel", "Hit Hotel")
     p_id = dados.get("id")
     
-    conn = get_db()
-    cursor = conn.cursor()
+    db = get_db()
+    cursor = db.cursor()
+    param = "%s" if db.is_pg else "?"
     
-    cursor.execute("SELECT COUNT(*) FROM historico WHERE produto_id = ? AND hotel = ?", (p_id, hotel))
-    total_movimentacoes = cursor.fetchone()[0]
+    cursor.execute(f"SELECT COUNT(*) FROM historico WHERE produto_id = {param} AND hotel = {param}", (p_id, hotel))
+    row = cursor.fetchone()
+    total_movimentacoes = list(row.values())[0] if db.is_pg else row[0]
     
     if total_movimentacoes > 0:
-        conn.close()
+        db.close()
         return jsonify({
             "sucesso": False, 
-            "mensagem": f"Este produto já possui {total_movimentacoes} movimentação(ões) no {hotel} e não pode ser excluído por segurança contábil."
+            "mensagem": f"Este item possui movimentações no {hotel} e não pode ser excluído por segurança contábil."
         }), 400
         
-    cursor.execute("DELETE FROM produtos WHERE id = ? AND hotel = ?", (p_id, hotel))
-    conn.commit()
-    conn.close()
+    cursor.execute(f"DELETE FROM produtos WHERE id = {param} AND hotel = {param}", (p_id, hotel))
+    db.commit()
+    db.close()
     
-    return jsonify({"sucesso": True, "mensagem": f"Produto excluído do {hotel} com sucesso!"})
+    return jsonify({"sucesso": True, "mensagem": f"Item excluído do {hotel} com sucesso!"})
 
 @app.route("/api/salvar", methods=["POST"])
 def salvar_conferencia():
@@ -440,32 +502,48 @@ def salvar_conferencia():
     agora = agora_dt.strftime("%d/%m/%Y %H:%M")
     data_dia = agora_dt.strftime("%Y-%m-%d")
     
-    conn = get_db()
-    cursor = conn.cursor()
+    db = get_db()
+    cursor = db.cursor()
     
-    cursor.execute("""
-        INSERT INTO conferencias (hotel, data_hora, data_dia, conferente, total_itens, total_alertas)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (hotel, agora, data_dia, conferente, len(itens), 0))
-    conf_id = cursor.lastrowid
+    if db.is_pg:
+        cursor.execute("""
+            INSERT INTO conferencias (hotel, data_hora, data_dia, conferente, total_itens, total_alertas)
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+        """, (hotel, agora, data_dia, conferente, len(itens), 0))
+        conf_id = list(cursor.fetchone().values())[0]
+    else:
+        cursor.execute("""
+            INSERT INTO conferencias (hotel, data_hora, data_dia, conferente, total_itens, total_alertas)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (hotel, agora, data_dia, conferente, len(itens), 0))
+        conf_id = cursor.lastrowid
     
     itens_alerta = []
     itens_conferidos = []
+    param = "%s" if db.is_pg else "?"
     
     for it in itens:
         p_id = it.get("id")
         qtd = int(it.get("quantidade", 0))
         
-        cursor.execute("SELECT categoria, nome, estoque_minimo, estoque_atual, unidade FROM produtos WHERE id = ? AND hotel = ?", (p_id, hotel))
+        cursor.execute(f"SELECT categoria, nome, estoque_minimo, estoque_atual, unidade FROM produtos WHERE id = {param} AND hotel = {param}", (p_id, hotel))
         row = cursor.fetchone()
         if row:
-            cat = row["categoria"]
-            nome = row["nome"]
-            min_estq = row["estoque_minimo"]
-            qtd_anterior = row["estoque_atual"]
-            unidade = row["unidade"]
+            d = dict(row)
+            cat = d["categoria"]
+            nome = d["nome"]
+            min_estq = d["estoque_minimo"]
+            qtd_anterior = d["estoque_atual"]
+            unidade = d["unidade"]
             
-            cursor.execute("UPDATE produtos SET estoque_atual = ?, ultima_atualizacao = ? WHERE id = ? AND hotel = ?", (qtd, agora, p_id, hotel))
+            if db.is_pg:
+                cursor.execute("""
+                    UPDATE produtos SET estoque_atual = %s, ultima_atualizacao = %s WHERE id = %s AND hotel = %s
+                """, (qtd, agora, p_id, hotel))
+            else:
+                cursor.execute("""
+                    UPDATE produtos SET estoque_atual = ?, ultima_atualizacao = ? WHERE id = ? AND hotel = ?
+                """, (qtd, agora, p_id, hotel))
             
             precisa_comprar = qtd <= min_estq
             status = f"ALERTA: Repor (+{min_estq - qtd} {unidade})" if precisa_comprar else "OK"
@@ -488,20 +566,30 @@ def salvar_conferencia():
                 item_info["sugestao"] = faltante if faltante > 0 else 0
                 itens_alerta.append(item_info)
             
-            cursor.execute("""
-                INSERT INTO historico (conferencia_id, hotel, data_hora, data_dia, conferente, produto_id, produto_nome, categoria, quantidade, quantidade_anterior, minimo, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (conf_id, hotel, agora, data_dia, conferente, p_id, nome, cat, qtd, qtd_anterior, min_estq, status))
+            if db.is_pg:
+                cursor.execute("""
+                    INSERT INTO historico (conferencia_id, hotel, data_hora, data_dia, conferente, produto_id, produto_nome, categoria, quantidade, quantidade_anterior, minimo, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (conf_id, hotel, agora, data_dia, conferente, p_id, nome, cat, qtd, qtd_anterior, min_estq, status))
+            else:
+                cursor.execute("""
+                    INSERT INTO historico (conferencia_id, hotel, data_hora, data_dia, conferente, produto_id, produto_nome, categoria, quantidade, quantidade_anterior, minimo, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (conf_id, hotel, agora, data_dia, conferente, p_id, nome, cat, qtd, qtd_anterior, min_estq, status))
     
-    cursor.execute("UPDATE conferencias SET total_alertas = ? WHERE id = ?", (len(itens_alerta), conf_id))
-    conn.commit()
-    conn.close()
+    if db.is_pg:
+        cursor.execute("UPDATE conferencias SET total_alertas = %s WHERE id = %s", (len(itens_alerta), conf_id))
+    else:
+        cursor.execute("UPDATE conferencias SET total_alertas = ? WHERE id = ?", (len(itens_alerta), conf_id))
+        
+    db.commit()
+    db.close()
     
     email_enviado, erro_msg = enviar_email_conferencia(hotel, conferente, agora, itens_conferidos, itens_alerta)
     
     return jsonify({
         "sucesso": True,
-        "mensagem": f"Conferência do {hotel} registrada com sucesso!",
+        "mensagem": f"Conferência do {hotel} gravada permanentemente na nuvem!",
         "itensAlerta": len(itens_alerta),
         "emailEnviado": email_enviado,
         "emailDestino": EMAIL_DESTINO,
@@ -522,48 +610,52 @@ def salvar_conferencia():
 @app.route("/api/relatorios/estoque-atual")
 def relatorio_estoque_atual():
     hotel = request.args.get("hotel", "Hit Hotel")
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
+    db = get_db()
+    cursor = db.cursor()
+    param = "%s" if db.is_pg else "?"
+    cursor.execute(f"""
         SELECT id, hotel, categoria, nome, estoque_minimo, estoque_atual, unidade, ultima_atualizacao,
         CASE WHEN estoque_atual <= estoque_minimo THEN 1 ELSE 0 END as precisa_comprar,
         CASE WHEN estoque_minimo > estoque_atual THEN estoque_minimo - estoque_atual ELSE 0 END as sugestao_compra
         FROM produtos
-        WHERE hotel = ?
+        WHERE hotel = {param}
         ORDER BY categoria, nome
     """, (hotel,))
     rows = cursor.fetchall()
-    conn.close()
+    db.close()
     return jsonify([dict(r) for r in rows])
 
 @app.route("/api/relatorios/conferencias-dia")
 def relatorio_conferencias():
     hotel = request.args.get("hotel", "Hit Hotel")
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, hotel, data_hora, data_dia, conferente, total_itens, total_alertas FROM conferencias WHERE hotel = ? ORDER BY id DESC LIMIT 60", (hotel,))
+    db = get_db()
+    cursor = db.cursor()
+    param = "%s" if db.is_pg else "?"
+    cursor.execute(f"SELECT id, hotel, data_hora, data_dia, conferente, total_itens, total_alertas FROM conferencias WHERE hotel = {param} ORDER BY id DESC LIMIT 60", (hotel,))
     rows = cursor.fetchall()
-    conn.close()
+    db.close()
     return jsonify([dict(r) for r in rows])
 
 @app.route("/api/relatorios/comparativo-dias")
 def relatorio_comparativo_dias():
     hotel = request.args.get("hotel", "Hit Hotel")
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT data_dia FROM historico WHERE hotel = ? ORDER BY data_dia DESC LIMIT 2", (hotel,))
-    dias = [r[0] for r in cursor.fetchall()]
+    db = get_db()
+    cursor = db.cursor()
+    param = "%s" if db.is_pg else "?"
+    cursor.execute(f"SELECT DISTINCT data_dia FROM historico WHERE hotel = {param} ORDER BY data_dia DESC LIMIT 2", (hotel,))
+    dias_raw = cursor.fetchall()
+    dias = [list(dict(r).values())[0] for r in dias_raw]
     
     if len(dias) < 2:
-        conn.close()
+        db.close()
         return jsonify({
             "disponivel": False, 
-            "mensagem": f"O {hotel} precisa ter pelo menos 2 conferências em dias distintos para gerar o comparativo de vendas diárias."
+            "mensagem": f"O {hotel} precisa ter pelo menos 2 conferências em dias distintos para gerar o comparativo de consumo."
         })
         
     dia_recente, dia_anterior = dias[0], dias[1]
     
-    query = """
+    query = f"""
         SELECT 
             h1.produto_nome, h1.categoria,
             h2.quantidade as qtd_anterior,
@@ -571,27 +663,28 @@ def relatorio_comparativo_dias():
             (h2.quantidade - h1.quantidade) as consumo_estimado,
             h1.minimo
         FROM historico h1
-        JOIN historico h2 ON h1.produto_id = h2.produto_id AND h2.data_dia = ? AND h2.hotel = ?
-        WHERE h1.data_dia = ? AND h1.hotel = ?
-        GROUP BY h1.produto_id
+        JOIN historico h2 ON h1.produto_id = h2.produto_id AND h2.data_dia = {param} AND h2.hotel = {param}
+        WHERE h1.data_dia = {param} AND h1.hotel = {param}
+        GROUP BY h1.produto_id, h1.produto_nome, h1.categoria, h2.quantidade, h1.quantidade, h1.minimo
         ORDER BY h1.categoria, h1.produto_nome
     """
     cursor.execute(query, (dia_anterior, hotel, dia_recente, hotel))
     rows = cursor.fetchall()
-    conn.close()
+    db.close()
     
     comparativo = []
     total_saidas = 0
     for r in rows:
-        consumo = r["consumo_estimado"] if r["consumo_estimado"] > 0 else 0
+        d = dict(r)
+        consumo = d["consumo_estimado"] if d["consumo_estimado"] and d["consumo_estimado"] > 0 else 0
         total_saidas += consumo
         comparativo.append({
-            "produto": r["produto_nome"],
-            "categoria": r["categoria"],
-            "qtdAnterior": r["qtd_anterior"],
-            "qtdAtual": r["qtd_atual"],
+            "produto": d["produto_nome"],
+            "categoria": d["categoria"],
+            "qtdAnterior": d["qtd_anterior"],
+            "qtdAtual": d["qtd_atual"],
             "consumoVendas": consumo,
-            "minimo": r["minimo"]
+            "minimo": d["minimo"]
         })
         
     return jsonify({

@@ -7,3 +7,5 @@ services:
     envVars:
       - key: EMAIL_DESTINO
         value: mwfreitas@gmail.com
+      - key: DATABASE_URL
+        value: postgresql://neondb_owner:npg_1MIFPkXq2nja@ep-sweet-pine-b4td0byr-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require
