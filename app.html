@@ -472,13 +472,18 @@
 
   <!-- Barra Superior de Seleção do Hotel -->
   <div class="hotel-selector-bar">
-    <label for="selectHotelAtivo">🏨 Unidade do Hotel:</label>
-    <select id="selectHotelAtivo" class="hotel-select" onchange="mudarHotel(this.value)">
-      <option value="Hit Hotel">Hit Hotel</option>
-      <option value="Porto Salvador">Porto Salvador</option>
-      <option value="Ancoras">Ancoras</option>
-      <option value="La Vista">La Vista</option>
-    </select>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <label for="selectHotelAtivo">🏨 Unidade:</label>
+      <select id="selectHotelAtivo" class="hotel-select" onchange="mudarHotel(this.value)">
+        <option value="Hit Hotel">Hit Hotel</option>
+        <option value="Porto Salvador">Porto Salvador</option>
+        <option value="Ancoras">Ancoras</option>
+        <option value="La Vista">La Vista</option>
+      </select>
+    </div>
+    <div id="badgeBancoStatus" style="font-size:0.75rem;padding:3px 8px;border-radius:6px;background:#334155;color:#94a3b8;cursor:help;" title="Verificando conexão com o banco de dados...">
+      🔄 Conectando...
+    </div>
   </div>
 
   <!-- Header -->
@@ -618,8 +623,30 @@
     document.addEventListener("DOMContentLoaded", () => {
       document.getElementById('selectHotelAtivo').value = hotelAtivo;
       atualizarIdentificacaoHotel();
+      verificarStatusBanco();
       carregarProdutos();
     });
+
+    async function verificarStatusBanco() {
+      const badge = document.getElementById('badgeBancoStatus');
+      try {
+        const res = await fetch('/api/status-banco');
+        const st = await res.json();
+        if (st.permanente) {
+          badge.style.background = '#065f46';
+          badge.style.color = '#34d399';
+          badge.innerHTML = '☁️ Banco Neon (Permanente)';
+          badge.title = 'Seus dados estão gravados na nuvem e nunca serão perdidos!';
+        } else {
+          badge.style.background = '#7f1d1d';
+          badge.style.color = '#f87171';
+          badge.innerHTML = '⚠️ Banco Local (Temporário)';
+          badge.title = 'Atenção: A variável DATABASE_URL ainda não está ativa no Render. Os dados podem reiniciar quando o sistema for atualizado.';
+        }
+      } catch (e) {
+        badge.innerHTML = '⚡ Status: Ativo';
+      }
+    }
 
     function mudarHotel(novoHotel) {
       hotelAtivo = novoHotel;

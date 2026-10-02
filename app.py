@@ -36,16 +36,22 @@ class DBConnWrapper:
     def __init__(self):
         self.is_pg = False
         self.conn = None
-        if TEM_POSTGRES and DATABASE_URL and DATABASE_URL.startswith("postgres"):
+        self.erro = None
+        
+        # Conexão com PostgreSQL (Neon)
+        if TEM_POSTGRES and DATABASE_URL and (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")):
             try:
-                # Ajusta sslmode se necessário
                 db_url = DATABASE_URL
+                # O psycopg2 prefere postgresql://
+                if db_url.startswith("postgres://"):
+                    db_url = db_url.replace("postgres://", "postgresql://", 1)
                 if "channel_binding" in db_url:
                     db_url = db_url.split("&channel_binding")[0]
                 self.conn = psycopg2.connect(db_url)
                 self.is_pg = True
             except Exception as e:
-                print(f"Aviso: Falha ao conectar no Postgres ({e}), usando fallback SQLite.")
+                self.erro = str(e)
+                print(f"Aviso: Falha ao conectar no Postgres ({e}), usando fallback SQLite temporário.")
                 self.conn = sqlite3.connect(DB_FILE)
                 self.conn.row_factory = sqlite3.Row
         else:
@@ -366,6 +372,20 @@ def index():
 @app.route("/api/hoteis")
 def listar_hoteis():
     return jsonify(HOTEIS_DISPONIVEIS)
+
+@app.route("/api/status-banco")
+def status_banco():
+    db = get_db()
+    tipo = "Neon PostgreSQL (Permanente)" if db.is_pg else "SQLite Local (Temporário)"
+    permanente = db.is_pg
+    erro = getattr(db, 'erro', None)
+    db.close()
+    return jsonify({
+        "tipo": tipo,
+        "permanente": permanente,
+        "databaseUrlConfigurada": bool(DATABASE_URL),
+        "erro": erro
+    })
 
 @app.route("/api/produtos")
 def listar_produtos():
